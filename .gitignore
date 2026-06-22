@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 运行时日志（含敏感交易数据）
+logs/
+*.log
+
+# 运行状态文件（实时变化、含敏感持仓数据）
+data/trading_state.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Screen 会话
+*.screen
+
+# macOS 启动配置（本地环境相关）
+*.plist
+
+# 备份文件
+*.bak
+*.backup
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 环境变量/密钥
+.env
+.env.local

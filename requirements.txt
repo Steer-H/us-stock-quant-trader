@@ -1,0 +1,41 @@
+# ============================================================================
+# 美股量化交易系统 - Python 依赖
+# ============================================================================
+# 安装: pip install -r requirements.txt
+#
+# 最低 Python 版本: 3.9+
+# 推荐 Python 版本: 3.11+
+
+# ---- 数据处理 ----
+numpy>=1.24.0,<2.0.0       # 高性能数值计算
+pandas>=2.0.0               # 数据分析和操作
+scipy>=1.10.0               # 科学计算（统计、优化）
+
+# ---- 机器学习 ----
+torch>=2.0.0                # PyTorch 深度学习框架
+scikit-learn>=1.3.0         # 机器学习工具（标准化器等）
+
+# ---- 数据获取 ----
+yfinance>=0.2.30            # Yahoo Finance 数据接口
+requests>=2.31.0            # HTTP请求库
+beautifulsoup4>=4.12.0      # HTML解析（Wikipedia成分股抓取）
+lxml>=4.9.0                 # XML/HTML解析器
+
+# ---- 数据存储 ----
+tables>=3.8.0               # HDF5存储支持
+pyarrow>=12.0.0             # Parquet存储支持
+fastparquet>=2023.0.0       # Parquet备选引擎
+
+# ---- 系统监控 ----
+psutil>=5.9.0               # 系统资源监控（CPU/内存）
+
+# ---- 可选依赖（按需安装） ----
+# pip install python-telegram-bot    # Telegram告警
+# pip install matplotlib             # 图表绘制
+# pip install seaborn                # 统计可视化
+# pip install jupyter                # 交互式研究环境
+
+# ---- 开发工具（可选） ----
+# pip install pytest                 # 单元测试
+# pip install black                  # 代码格式化
+# pip install mypy                   # 类型检查

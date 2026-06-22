@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美股量化交易系统 v2.0 — 技术手册</title>
+    <style>
+        :root {
+            --bg: #0d1117; --card: #161b22; --border: #30363d;
+            --txt: #e6edf3; --txt2: #8b949e; --cyan: #39d2c0;
+            --blue: #58a6ff; --green: #3fb950; --red: #f85149;
+            --r: 8px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--txt);
+            line-height: 1.7; padding: 40px 0;
+        }
+        .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+        h1 { font-size: 2em; color: var(--cyan); border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 8px; }
+        h2 { font-size: 1.4em; color: var(--blue); margin-top: 36px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        h3 { font-size: 1.15em; color: var(--txt); margin-top: 24px; margin-bottom: 8px; }
+        p { margin-bottom: 12px; color: var(--txt2); }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code {
+            background: var(--card); color: var(--green);
+            padding: 2px 6px; border-radius: 4px; font-size: 0.9em;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        pre {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: var(--r); padding: 16px; overflow-x: auto;
+            margin-bottom: 16px; font-size: 0.85em; line-height: 1.5;
+        }
+        pre code { background: none; padding: 0; color: var(--txt); }
+        table {
+            width: 100%; border-collapse: collapse; margin-bottom: 16px;
+            font-size: 0.9em;
+        }
+        th {
+            background: var(--card); color: var(--cyan);
+            padding: 10px 12px; text-align: left; border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px; border: 1px solid var(--border);
+            color: var(--txt2);
+        }
+        tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+        ul, ol { margin-bottom: 16px; padding-left: 24px; color: var(--txt2); }
+        li { margin-bottom: 4px; }
+        blockquote {
+            border-left: 3px solid var(--cyan); padding-left: 16px;
+            margin: 16px 0; color: var(--txt2); font-style: italic;
+        }
+        hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+        strong { color: var(--txt); }
+        .footer {
+            margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border);
+            color: var(--txt2); font-size: 0.85em; text-align: center;
+        }
+        @media print {
+            body { background: white; color: black; }
+            :root { --bg: white; --card: #f5f5f5; --border: #ddd;
+                     --txt: #111; --txt2: #444; --cyan: #0a7; --blue: #05c; }
+            .container { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="v20">美股量化交易系统 v2.0</h1>
+<blockquote>
+<p>基于 Transformer 深度学习 + 动态杠杆引擎的 40 股美股量化交易系统<br />
+最后更新: 2026-06-17 | 版本: v2.0 (40-stock + Dynamic Leverage)</p>
+</blockquote>
+<hr />
+<h2 id="_1">目录</h2>
+<ol>
+<li><a href="#1-系统概览">系统概览</a></li>
+<li><a href="#2-核心架构">核心架构</a></li>
+<li><a href="#3-运作原理">运作原理</a></li>
+<li><a href="#4-文件结构">文件结构</a></li>
+<li><a href="#5-环境要求">环境要求</a></li>
+<li><a href="#6-快速部署">快速部署</a></li>
+<li><a href="#7-配置说明">配置说明</a></li>
+<li><a href="#8-仪表盘使用">仪表盘使用</a></li>
+<li><a href="#9-训练新模型">训练新模型</a></li>
+<li><a href="#10-故障排查">故障排查</a></li>
+<li><a href="#11-与旧版区别">与旧版区别</a></li>
+</ol>
+<hr />
+<h2 id="1">1. 系统概览</h2>
+<p>本系统对美国股市 40 只股票进行实时量化交易（模拟），核心由三层组成：</p>
+<pre class="codehilite"><code>┌─────────────────────────────────────────────────┐
+│              浏览器仪表盘 (:8080)                  │
+│         实时K线 · 持仓 · 盈亏 · 杠杆              │
+└──────────────────┬──────────────────────────────┘
+                   │ HTTP/轮询 (1s)
+┌──────────────────▼──────────────────────────────┐
+│           Flask Web 服务器 (web_server.py)        │
+│   tick_engine 每秒运行：价格更新 → 交易决策        │
+│   ┌──────────┬──────────┬──────────┬──────────┐  │
+│   │ 止盈止损 │ ML预测   │ 超时平仓  │ 动态杠杆  │  │
+│   └──────────┴──────────┴──────────┴──────────┘  │
+└──────┬──────────────┬──────────────┬─────────────┘
+       │              │              │
+┌──────▼──────┐ ┌─────▼──────┐ ┌────▼─────────────┐
+│ Yahoo Finance│ │ Transformer │ │  Leverage Engine │
+│  实时价格     │ │  ML 推理    │ │  凯利+波动率+绩效 │
+│  30s/次      │ │  40股预测   │ │  四因子动态杠杆   │
+└─────────────┘ └────────────┘ └──────────────────┘
+</code></pre>
+
+<p><strong>关键数字</strong>:<br />
+- 40 只美股（科技/芯片/光模块/存储/金融/消费/EDA）<br />
+- 100% 真实 Yahoo Finance 数据（非模拟）<br />
+- Transformer 模型 24 特征 × 256 维度<br />
+- 动态杠杆 0.25x ~ 2.0x（凯利公式 + 三因子调节）</p>
+<hr />
+<h2 id="2">2. 核心架构</h2>
+<h3 id="21-tick_engine">2.1 交易引擎 (tick_engine)</h3>
+<p>每秒运行一次的核心循环：</p>
+<pre class="codehilite"><code>tick_engine() 每秒:
+  ├── Yahoo Finance 抓取实时价格 (30s间隔)
+  ├── 开盘检测 → 自动建仓 40 只股票
+  ├── 更新持仓市值 &amp; 基准
+  ├── 利息结算 (杠杆借款日息)
+  │
+  ├── [仅交易时段] 每60秒:
+  │   ├── 卖出检查: 止盈(+3%) 止损(-2.5%/-4%) ML预测 超时(30min)
+  │   └── 买入检查: ML信号筛选 → 动态杠杆计算 → 开仓
+  │
+  ├── 每30秒: 统计预测 &amp; 准确率追踪
+  └── 每60秒: 自动保存状态
+</code></pre>
+
+<h3 id="22-ml">2.2 ML 模型</h3>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>架构</td>
+<td>StockTransformer (Pre-LN Encoder-only)</td>
+</tr>
+<tr>
+<td>特征</td>
+<td>24个技术指标 (SMA/EMA/RSI/MACD/Bollinger/ATR等)</td>
+</tr>
+<tr>
+<td>维度</td>
+<td>d_model=256, 4层, 8头</td>
+</tr>
+<tr>
+<td>输入</td>
+<td>60天历史特征窗口</td>
+</tr>
+<tr>
+<td>输出</td>
+<td>5日方向(涨跌) + 5日收益率</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>40只股票, 113,182训练样本</td>
+</tr>
+<tr>
+<td>设备</td>
+<td>Apple Silicon MPS (GPU加速)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 动态杠杆引擎</h3>
+<p>替代传统静态杠杆映射，基于四因子实时计算：</p>
+<pre class="codehilite"><code>杠杆 = 凯利基础 × 波动率乘数 × 绩效乘数 × 热度乘数
+     → clamp(0.25x ~ 2.0x) → min(熔断上限)
+</code></pre>
+
+<table>
+<thead>
+<tr>
+<th>因子</th>
+<th>说明</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>凯利公式</td>
+<td>f* = (p×b−q)/b, Half-Kelly</td>
+<td>p=0.72 → 1.56x</td>
+</tr>
+<tr>
+<td>波动率</td>
+<td>年化波动率估算</td>
+<td>高波动→0.6x, 极端→0.25x</td>
+</tr>
+<tr>
+<td>绩效反馈</td>
+<td>近20笔胜率</td>
+<td>连胜+30%, 连败-60%</td>
+</tr>
+<tr>
+<td>组合热度</td>
+<td>持仓/容量比</td>
+<td>满仓→杠杆打4折</td>
+</tr>
+</tbody>
+</table>
+<p><strong>五级渐进熔断</strong>: 回撤 5%→1.5x, 10%→1.0x, 15%→0.5x, 20%→停仓</p>
+<h3 id="24-40">2.4 40 只股票</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>股票</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>科技七巨头</td>
+<td>AAPL MSFT NVDA GOOGL AMZN META TSLA</td>
+</tr>
+<tr>
+<td>软件/SaaS</td>
+<td>NFLX ADBE CRM NOW ORCL</td>
+</tr>
+<tr>
+<td>金融</td>
+<td>JPM V MA BAC</td>
+</tr>
+<tr>
+<td>消费</td>
+<td>WMT HD NKE SBUX UBER</td>
+</tr>
+<tr>
+<td>芯片/半导体</td>
+<td>AVGO AMD INTC QCOM TXN</td>
+</tr>
+<tr>
+<td>光模块/光通信</td>
+<td>AAOI COHR LITE FN</td>
+</tr>
+<tr>
+<td>存储</td>
+<td>WDC STX NTAP</td>
+</tr>
+<tr>
+<td>数据中心芯片</td>
+<td>MRVL MU</td>
+</tr>
+<tr>
+<td>半导体设备</td>
+<td>LRCX AMAT KLAC</td>
+</tr>
+<tr>
+<td>EDA软件</td>
+<td>SNPS CDNS</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3">3. 运作原理</h2>
+<h3 id="31">3.1 开盘自动建仓</h3>
+<p>当美东时间 9:30，系统检测到 <code>REGULAR_HOURS</code>：<br />
+1. 从 Yahoo Finance 批量获取 40 只股票实时价格<br />
+2. 每只分配约 $2,000（总资金 $100,000 的 80%）<br />
+3. 按实时价格计算股数，扣除佣金后建仓<br />
+4. 建仓完成后开始交易循环</p>
+<h3 id="32">3.2 买卖决策</h3>
+<p><strong>卖出条件</strong>（任一触发）:<br />
+1. 止盈: 盈利 ≥ 3%，80% 概率卖出（确定性哈希）<br />
+2. 止损: 杠杆持仓 -2.5%，普通 -4%，90% 概率卖出<br />
+3. ML 预测: Transformer 预测下跌 + 置信度 &gt; 55%<br />
+4. 超时: 持仓超过 30 分钟强制平仓</p>
+<p><strong>买入条件</strong>:<br />
+1. 现金 &gt; $5,000<br />
+2. 候选股票未持仓且不在冷却期<br />
+3. ML 模型预测上涨<br />
+4. 动态杠杆引擎计算杠杆 ≥ 0.5x（机会足够好）</p>
+<h3 id="33">3.3 风控体系</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仓位</td>
+<td>单股 ≤ 8% 总权益，杠杆 ≤ 12%</td>
+</tr>
+<tr>
+<td>止损</td>
+<td>杠杆 -2.5%，普通 -4%</td>
+</tr>
+<tr>
+<td>回撤</td>
+<td>5级渐进熔断 (5%/10%/15%/20%)</td>
+</tr>
+<tr>
+<td>保证金</td>
+<td>&gt; 60%→1.5x, &gt; 80%→1.0x, &gt; 90%→停仓</td>
+</tr>
+<tr>
+<td>杠杆借款</td>
+<td>年化 5% 利息，最大 2x</td>
+</tr>
+<tr>
+<td>状态持久化</td>
+<td>每 60 秒自动保存，崩溃可恢复</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4">4. 文件结构</h2>
+<pre class="codehilite"><code>美股量化交易（New）/
+├── main.py                    # 入口：web/backtest/crawl/train
+├── requirements.txt           # Python 依赖
+├── README.md                  # 本文档
+│
+├── config/                    # 配置
+│   └── settings.py            # 模型/交易/数据源配置
+│
+├── live_trading/              # ★ 核心交易系统
+│   ├── web_server.py          # Flask 服务器 + tick_engine
+│   ├── portfolio.py           # 持仓管理 + 杠杆借款
+│   ├── model_inference.py     # Transformer 实时推理
+│   ├── predictor.py           # 统计预测器（ML后备）
+│   ├── leverage_engine.py     # ★ 动态杠杆引擎 (v2.0新增)
+│   ├── market_clock.py        # 美股交易时钟
+│   ├── benchmark.py           # 基准对比（vs 纳指）
+│   ├── accuracy_tracker.py    # 预测准确率追踪
+│   ├── state_persistence.py   # 状态保存/恢复
+│   └── templates/
+│       └── dashboard.html     # Web 仪表盘前端
+│
+├── ml_model/                  # ML 模型
+│   ├── transformer.py         # StockTransformer 架构
+│   ├── trainer.py             # 训练器 + 超参调优
+│   └── data_loader.py         # 数据加载 + 标准化
+│
+├── data_pipeline/             # 数据管道
+│   ├── fetcher.py             # Yahoo Finance 抓取
+│   ├── cleaner.py             # 数据清洗
+│   ├── indicators.py          # 技术指标计算
+│   └── storage.py             # Parquet 存储
+│
+├── risk/                      # 风控
+│   └── manager.py             # 风险检查
+│
+├── crawler/                   # 爬虫
+│   └── stock_crawler.py       # S&amp;P 500 批量爬取
+│
+├── backtesting/               # 回测
+│   ├── engine.py              # 回测引擎
+│   └── performance.py         # 绩效分析
+│
+├── data/                      # 数据目录
+│   ├── processed/             # 40只股票特征数据 (*.parquet)
+│   ├── models/                # 训练好的模型 (*.pt)
+│   └── trading_state.json     # 交易状态持久化
+│
+├── logs/                      # 运行日志
+└── work_logs/                 # 开发文档/变更日志
+</code></pre>
+
+<hr />
+<h2 id="5">5. 环境要求</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>最低要求</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>3.9+</td>
+<td>3.11+</td>
+</tr>
+<tr>
+<td>PyTorch</td>
+<td>2.0+</td>
+<td>2.3+ (MPS支持)</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>12.0+</td>
+<td>14.0+ (Apple Silicon)</td>
+</tr>
+<tr>
+<td>内存</td>
+<td>8 GB</td>
+<td>16 GB</td>
+</tr>
+<tr>
+<td>网络</td>
+<td>可访问 Yahoo Finance</td>
+<td>稳定连接</td>
+</tr>
+<tr>
+<td>浏览器</td>
+<td>Chrome/Safari/Firefox</td>
+<td>最新版</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Python 依赖</strong> (<code>requirements.txt</code>):</p>
+<pre class="codehilite"><code>flask, yfinance, pandas, numpy, torch, scikit-learn, 
+lightweight-charts (CDN), requests, beautifulsoup4, pyarrow
+</code></pre>
+
+<hr />
+<h2 id="6">6. 快速部署</h2>
+<h3 id="61">6.1 一键启动</h3>
+<pre class="codehilite"><code class="language-bash">cd /Users/oujianli/Documents/美股量化交易（New）
+
+# 安装依赖
+pip3 install -r requirements.txt
+
+# 启动交易服务器（screen 后台运行）
+screen -dmS trading python3 -u live_trading/web_server.py
+
+# 打开浏览器
+open http://localhost:8080
+</code></pre>
+
+<h3 id="62">6.2 训练模型（首次或数据更新后）</h3>
+<pre class="codehilite"><code class="language-bash"># 40只股票完整训练（MPS加速，约90分钟）
+python3 &lt;&lt; 'PYEOF'
+import sys; sys.path.insert(0, '.')
+from ml_model.trainer import ModelTrainer
+from ml_model.data_loader import prepare_data
+from config.settings import model_config
+
+train_loader, val_loader, test_loader, scaler = prepare_data(config=model_config)
+trainer = ModelTrainer(model_config)
+trainer.train(train_loader, val_loader, epochs=30)
+result = trainer.evaluate(test_loader)
+print(f&quot;方向准确率: {result.direction_accuracy:.2%}&quot;)
+trainer.save_model('transformer_stock_latest')
+PYEOF
+</code></pre>
+
+<h3 id="63">6.3 爬取历史数据（如需要）</h3>
+<pre class="codehilite"><code class="language-bash">python3 main.py crawl
+</code></pre>
+
+<h3 id="64">6.4 重启服务器</h3>
+<pre class="codehilite"><code class="language-bash"># 杀掉旧进程
+screen -S trading -X quit
+pkill -f web_server.py
+
+# 等待端口释放
+sleep 3
+
+# 启动新服务
+screen -dmS trading python3 -u live_trading/web_server.py
+
+# 验证
+curl http://localhost:8080/api/health
+</code></pre>
+
+<hr />
+<h2 id="7">7. 配置说明</h2>
+<p>核心配置在 <code>config/settings.py</code>：</p>
+<h3 id="modelconfig">模型配置 (<code>ModelConfig</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>d_model</td>
+<td>256</td>
+<td>Transformer 隐藏维度</td>
+</tr>
+<tr>
+<td>n_heads</td>
+<td>8</td>
+<td>注意力头数</td>
+</tr>
+<tr>
+<td>n_encoder_layers</td>
+<td>4</td>
+<td>Encoder 层数</td>
+</tr>
+<tr>
+<td>dropout</td>
+<td>0.15</td>
+<td>Dropout 率</td>
+</tr>
+<tr>
+<td>lookback_window</td>
+<td>60</td>
+<td>输入窗口(天)</td>
+</tr>
+<tr>
+<td>prediction_horizon</td>
+<td>5</td>
+<td>预测窗口(天)</td>
+</tr>
+<tr>
+<td>learning_rate</td>
+<td>1e-4</td>
+<td>学习率</td>
+</tr>
+<tr>
+<td>batch_size</td>
+<td>64</td>
+<td>批大小</td>
+</tr>
+<tr>
+<td>min_direction_accuracy</td>
+<td>0.55</td>
+<td>最低方向准确率</td>
+</tr>
+<tr>
+<td>max_rmse</td>
+<td>0.06</td>
+<td>最大 RMSE</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tradingconfig">交易配置 (<code>TradingConfig</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>initial_capital</td>
+<td>100,000</td>
+<td>初始资金(美元)</td>
+</tr>
+<tr>
+<td>commission_per_share</td>
+<td>0.005</td>
+<td>每股佣金</td>
+</tr>
+<tr>
+<td>commission_min</td>
+<td>1.0</td>
+<td>最低佣金</td>
+</tr>
+<tr>
+<td>max_leverage</td>
+<td>2.0</td>
+<td>最大杠杆</td>
+</tr>
+<tr>
+<td>max_position_pct</td>
+<td>0.20</td>
+<td>单股最大仓位</td>
+</tr>
+<tr>
+<td>max_drawdown_pct</td>
+<td>0.25</td>
+<td>最大回撤(触及停交易)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="leverage_enginepy">杠杆引擎常量 (<code>leverage_engine.py</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MAX_LEVERAGE</td>
+<td>2.0</td>
+<td>全局杠杆上限</td>
+</tr>
+<tr>
+<td>MIN_LEVERAGE</td>
+<td>0.25</td>
+<td>全局杠杆下限</td>
+</tr>
+<tr>
+<td>HALF_KELLY_FRACTION</td>
+<td>0.5</td>
+<td>Half-Kelly 系数</td>
+</tr>
+<tr>
+<td>PERF_WINDOW</td>
+<td>20</td>
+<td>绩效追踪窗口(笔)</td>
+</tr>
+<tr>
+<td>DRAWDOWN_CAPS</td>
+<td>5级</td>
+<td>回撤熔断阈值</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8">8. 仪表盘使用</h2>
+<p>访问 <code>http://localhost:8080</code> 打开仪表盘，包含四个标签页：</p>
+<h3 id="overview">📊 概览 (Overview)</h3>
+<ul>
+<li>账户总览：总权益、现金、市值、净盈亏</li>
+<li>杠杆状态：当前杠杆、历史平均、保证金率、借款金额</li>
+<li>市场状态：开盘/盘前/盘后/闭市，倒计时</li>
+</ul>
+<h3 id="positions">📈 持仓 (Positions)</h3>
+<ul>
+<li>40只股票实时持仓表（盈亏、权重、日变动）</li>
+<li>最近10笔交易记录</li>
+<li>交易信号日志</li>
+</ul>
+<h3 id="k-charts">📉 K线图 (Charts)</h3>
+<ul>
+<li>TradingView 专业K线图（支持 1m/5m/15m/1h/1d）</li>
+<li>40只股票切换按钮，按行业分组</li>
+<li>成交量副图</li>
+</ul>
+<h3 id="analysis">📊 分析 (Analysis)</h3>
+<ul>
+<li>策略 vs 纳指对比曲线</li>
+<li>Alpha/Beta/夏普/信息比率</li>
+<li>预测准确率（方向 + RMSE）</li>
+<li>数据质量（来源、延迟、更新次数）</li>
+<li>ML 模型状态</li>
+</ul>
+<hr />
+<h2 id="9">9. 训练新模型</h2>
+<p>当数据更新或需要改进模型时：</p>
+<h3 id="_2">完整训练流程</h3>
+<pre class="codehilite"><code class="language-bash">cd /Users/oujianli/Documents/美股量化交易（New）
+
+# 1. 爬取最新数据（可选）
+python3 main.py crawl
+
+# 2. 处理数据（计算技术指标）
+python3 -c &quot;
+from data_pipeline.storage import ParquetStorage
+from data_pipeline.indicators import compute_all_indicators
+# ... 处理逻辑见 data_pipeline/
+&quot;
+
+# 3. 训练模型
+python3 &lt;&lt; 'PYEOF'
+import sys; sys.path.insert(0, '.')
+from ml_model.trainer import ModelTrainer
+from ml_model.data_loader import prepare_data
+from config.settings import model_config
+
+train_loader, val_loader, test_loader, scaler = prepare_data(config=model_config)
+trainer = ModelTrainer(model_config)
+trainer.train(train_loader, val_loader, epochs=30)
+result = trainer.evaluate(test_loader)
+trainer.save_model('transformer_stock_latest')
+PYEOF
+
+# 4. 重启服务器加载新模型
+screen -S trading -X quit; pkill -f web_server.py; sleep 3
+screen -dmS trading python3 -u live_trading/web_server.py
+</code></pre>
+
+<h3 id="_3">监控训练</h3>
+<pre class="codehilite"><code class="language-bash">tail -f logs/train_40stocks.log
+</code></pre>
+
+<hr />
+<h2 id="10">10. 故障排查</h2>
+<h3 id="_4">服务器不响应</h3>
+<pre class="codehilite"><code class="language-bash"># 检查进程
+pgrep -fl web_server.py
+lsof -i :8080
+
+# 查看错误日志
+tail -50 logs/launchd_stderr.log
+
+# 重启
+screen -S trading -X quit; pkill -f web_server.py
+sleep 3; screen -dmS trading python3 -u live_trading/web_server.py
+</code></pre>
+
+<h3 id="ml-ml_readyfalse">ML 模型未加载 (ml_ready=False)</h3>
+<pre class="codehilite"><code class="language-bash"># 检查模型文件
+ls -la data/models/transformer_stock_latest.pt
+
+# 手动测试加载
+python3 -c &quot;
+import sys; sys.path.insert(0,'.')
+from live_trading.model_inference import ModelInference
+mi = ModelInference()
+print('Load:', mi.load())
+print('Ready:', mi.is_ready())
+&quot;
+</code></pre>
+
+<h3 id="yahoo-finance">Yahoo Finance 无数据</h3>
+<ul>
+<li>Yahoo Finance 对中国大陆 IP 有限制，需代理/VPN</li>
+<li>系统会自动降级：3次失败后标记数据过期，暂停交易</li>
+<li>检查：<code>curl -s http://localhost:8080/api/status | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['data_quality'])"</code></li>
+</ul>
+<h3 id="staletrue">数据显示过期 (Stale=True)</h3>
+<ul>
+<li>等待 30 秒后 Yahoo 自动重试</li>
+<li>连续 3 次失败才会标记过期</li>
+<li>过期期间系统暂停交易，仅显示价格</li>
+</ul>
+<h3 id="_5">端口被占用</h3>
+<pre class="codehilite"><code class="language-bash">lsof -ti :8080 | xargs kill -9
+</code></pre>
+
+<hr />
+<h2 id="11">11. 与旧版区别</h2>
+<h3 id="v20-vs-v10">v2.0 vs v1.0 重大变更</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>v1.0 (旧版)</th>
+<th>v2.0 (当前)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>股票数量</td>
+<td>8 → 20 → 26</td>
+<td><strong>40</strong> (芯片/光模块/存储/EDA全覆盖)</td>
+</tr>
+<tr>
+<td>杠杆系统</td>
+<td>无</td>
+<td><strong>凯利四因子动态杠杆</strong> (0.25x~2.0x)</td>
+</tr>
+<tr>
+<td>数据新鲜度</td>
+<td>简单二值 stale</td>
+<td><strong>多级判定 + 数据年龄追踪</strong></td>
+</tr>
+<tr>
+<td>模型推理</td>
+<td>模拟随机</td>
+<td><strong>Transformer 实时推理</strong> (40股全预测)</td>
+</tr>
+<tr>
+<td>止损</td>
+<td>-8% 单一</td>
+<td><strong>-2.5%杠杆 / -4%普通 分级</strong></td>
+</tr>
+<tr>
+<td>回撤保护</td>
+<td>无</td>
+<td><strong>五级渐进熔断</strong> (5%/10%/15%/20%)</td>
+</tr>
+<tr>
+<td>前端</td>
+<td>20只K线按钮</td>
+<td><strong>40只按行业分组</strong></td>
+</tr>
+<tr>
+<td>后端稳定性</td>
+<td>Werkzeug kqueue 报错</td>
+<td><strong>threaded=True 修复</strong></td>
+</tr>
+<tr>
+<td>状态持久化</td>
+<td>部分</td>
+<td><strong>完整(含杠杆引擎/预测器)</strong></td>
+</tr>
+<tr>
+<td>数据过期误报</td>
+<td>经常误报</td>
+<td><strong>仅连续失败3次才标记</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">新增文件</h3>
+<ul>
+<li><code>live_trading/leverage_engine.py</code> — 动态杠杆引擎 (410行)</li>
+<li><code>work_logs/2026-06-17_pre-market-final-check.md</code> — 开盘前最终检查</li>
+<li><code>work_logs/2026-06-17_comprehensive-audit-v2.md</code> — 全面审计报告</li>
+</ul>
+<h3 id="_7">训练历史</h3>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>数据</th>
+<th>股票数</th>
+<th>准确率</th>
+<th>RMSE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>v1 合成</td>
+<td>GBM合成</td>
+<td>8</td>
+<td>61.72%</td>
+<td>0.053</td>
+</tr>
+<tr>
+<td>v3 锚点</td>
+<td>锚点约束合成</td>
+<td>26</td>
+<td>67.26%</td>
+<td>0.037</td>
+</tr>
+<tr>
+<td>v4 真实</td>
+<td>Yahoo真实</td>
+<td>40</td>
+<td>52.94%</td>
+<td>0.056</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注: v4 使用真实 Yahoo 数据，准确率略低但更接近实战。系统有多层安全网（杠杆引擎 + 止损 + 熔断）弥补模型精度。</p>
+</blockquote>
+<hr />
+<h2 id="_8">许可证与声明</h2>
+<p>本项目仅用于个人学习和研究目的。不构成投资建议。美股交易有风险，实盘请谨慎。</p>
+<hr />
+<blockquote>
+<p><strong>维护者</strong>: Codex AI<br />
+<strong>项目路径</strong>: <code>/Users/oujianli/Documents/美股量化交易（New）</code><br />
+<strong>最后更新</strong>: 2026-06-17 盘前</p>
+</blockquote>
+        <div class="footer">
+            美股量化交易系统 v2.0 · 生成于 2026-06-17 · 仅供学习研究
+        </div>
+    </div>
+</body>
+</html>
