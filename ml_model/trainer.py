@@ -1,25 +1,4 @@
-"""
-美股量化交易系统 - 模型训练与调参模块
-
-负责：
-- 模型训练（含早停、学习率调度、梯度裁剪）
-- 模型评估（多维度精度检验）
-- 超参数自动调优（网格搜索、贝叶斯优化）
-- 模型保存与加载
-
-训练目标：
-- 回归损失(MSE): 预测收益率尽可能接近真实值
-- 分类损失(BCE): 涨跌方向预测准确率高
-- 组合损失: α * MSE + β * BCE，平衡两个目标
-
-调参策略：
-当模型精度不达标时（方向准确率 < 55% 或 RMSE > 阈值），
-自动执行以下调参步骤：
-1. 调整学习率（对数空间搜索）
-2. 调整模型架构（d_model, n_heads, n_layers）
-3. 调整正则化参数（dropout, weight_decay）
-4. 调整奖励函数权重（方向 vs 幅度）
-"""
+"""Model training loop with checkpointing and early stopping."""
 
 import logging
 import sys
@@ -46,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 训练指标记录
+# 訓練指標記錄
 # ============================================================================
 @dataclass
 class TrainingMetrics:
     """
-    训练过程中的指标记录
+    訓練過程中的指標記錄
     
-    跟踪每个epoch的训练/验证损失和评估指标。
+    跟蹤每個epoch的訓練/驗證損失和評估指標。
     """
     train_losses: List[float] = field(default_factory=list)
     val_losses: List[float] = field(default_factory=list)
@@ -70,7 +49,7 @@ class TrainingMetrics:
     def update(self, epoch: int, train_loss: float, val_loss: float,
                reg_loss: float, cls_loss: float, lr: float,
                val_reg: float = 0, val_cls: float = 0) -> None:
-        """记录一个epoch的指标"""
+        """記錄一個epoch的指標"""
         self.train_losses.append(train_loss)
         self.val_losses.append(val_loss)
         self.train_reg_losses.append(reg_loss)
@@ -87,14 +66,14 @@ class TrainingMetrics:
 @dataclass 
 class EvaluationResult:
     """
-    模型评估结果
+    模型評估結果
     
-    包含多维度精度指标：
-    - 方向准确率: 预测涨跌方向正确的比例
-    - RMSE: 预测收益率与实际收益率的均方根误差
-    - MAE: 平均绝对误差
-    - Sharpe: 基于预测信号的夏普比率（简化计算）
-    - R²: 决定系数
+    包含多維度精度指標：
+    - 方向準確率: 預測漲跌方向正確的比例
+    - RMSE: 預測收益率與實際收益率的均方根誤差
+    - MAE: 平均絕對誤差
+    - Sharpe: 基於預測信號的夏普比率（簡化計算）
+    - R²: 決定係數
     """
     direction_accuracy: float = 0.0
     rmse: float = 0.0
@@ -106,18 +85,18 @@ class EvaluationResult:
     @property
     def is_acceptable(self) -> bool:
         """
-        判断模型精度是否可接受
+        判斷模型精度是否可接受
         
-        标准：
-        - 方向准确率 >= 55%（超过随机猜测50%）
-        - RMSE < 0.05（收益率预测误差在5%以内）
+        標準：
+        - 方向準確率 >= 55%（超過隨機猜測50%）
+        - RMSE < 0.05（收益率預測誤差在5%以內）
         """
         from config.settings import model_config
         return (self.direction_accuracy >= model_config.min_direction_accuracy and
                 self.rmse < model_config.max_rmse)
     
     def to_dict(self) -> Dict[str, float]:
-        """转换为字典"""
+        """轉換為字典"""
         return {
             'direction_accuracy': round(self.direction_accuracy, 4),
             'rmse': round(self.rmse, 6),
@@ -129,7 +108,7 @@ class EvaluationResult:
 
 
 # ============================================================================
-# 模型训练器
+# 模型訓練器
 # ============================================================================
 
 class FocalBCELoss(nn.Module):
@@ -168,13 +147,13 @@ class FocalBCELoss(nn.Module):
 
 class ModelTrainer:
     """
-    Transformer模型训练器
+    Transformer模型訓練器
     
     功能：
-    - 训练循环（含早停、学习率衰减、梯度裁剪）
-    - 模型评估
-    - 模型保存/加载
-    - 训练历史可视化数据导出
+    - 訓練循環（含早停、學習率衰減、梯度裁剪）
+    - 模型評估
+    - 模型保存/加載
+    - 訓練歷史可視化數據導出
     
     使用示例:
         trainer = ModelTrainer(model_config)
@@ -184,7 +163,7 @@ class ModelTrainer:
     
     def __init__(self, config: ModelConfig):
         """
-        参数:
+        參數:
             config: 模型配置
         """
         self.config = config
@@ -195,20 +174,20 @@ class ModelTrainer:
         self.metrics = TrainingMetrics()
         self.storage = ModelStorage()
         
-        # 损失函数
-        self.regression_loss_fn = nn.MSELoss()    # 回归损失
-        # 分类损失带Label Smoothing，防止过置信
-        # 金融数据信号噪声比极低，label smoothing是关键正则化手段
-        self.classification_loss_fn = nn.BCEWithLogitsLoss()  # 默认（base用）
-        self.cls_loss_smooth = None  # 带label smoothing的版本（按需创建）
+        # 損失函數
+        self.regression_loss_fn = nn.MSELoss()    # 回歸損失
+        # 分類損失帶Label Smoothing，防止過置信
+        # 金融數據信號噪聲比極低，label smoothing是關鍵正則化手段
+        self.classification_loss_fn = nn.BCEWithLogitsLoss()  # 默認（base用）
+        self.cls_loss_smooth = None  # 帶label smoothing的版本（按需創建）
         
-        logger.info(f"ModelTrainer初始化, 设备: {self.device}")
+        logger.info(f"ModelTrainer初始化, 設備: {self.device}")
     
     def _get_device(self) -> torch.device:
         """
-        自动选择最佳计算设备
+        自動選擇最佳計算設備
         
-        优先级: CUDA > MPS(Apple Silicon) > CPU
+        優先級: CUDA > MPS(Apple Silicon) > CPU
         """
         if self.config.device != 'cpu':
             if self.config.device == 'cuda' and torch.cuda.is_available():
@@ -227,20 +206,20 @@ class ModelTrainer:
         cls_target: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        计算组合损失
+        計算組合損失
         
         Total Loss = w_reg * MSE(reg_pred, reg_target) 
                    + w_cls * BCE(cls_pred, cls_target)
         
-        加权方案：
-        - 初始阶段：回归权重高（0.6），因为需要模型先学会预测收益率幅度
-        - 后期可调整：增加分类权重，提高方向判断准确率
+        加權方案：
+        - 初始階段：回歸權重高（0.6），因為需要模型先學會預測收益率幅度
+        - 後期可調整：增加分類權重，提高方向判斷準確率
         
-        参数:
-            reg_pred: 回归预测值 (batch, horizon)
-            reg_target: 回归目标值 (batch, horizon)
-            cls_pred: 分类logits (batch, horizon)
-            cls_target: 分类目标 (batch, horizon)
+        參數:
+            reg_pred: 回歸預測值 (batch, horizon)
+            reg_target: 回歸目標值 (batch, horizon)
+            cls_pred: 分類logits (batch, horizon)
+            cls_target: 分類目標 (batch, horizon)
         
         返回:
             (total_loss, reg_loss, cls_loss)
@@ -248,8 +227,8 @@ class ModelTrainer:
         reg_loss = self.regression_loss_fn(reg_pred, reg_target)
         cls_loss = self.classification_loss_fn(cls_pred, cls_target)
         
-        # 加权组合
-        w_reg = self.config.direction_reward_weight  # NOTE: 变量名direction_reward_weight实际控制回归损失，非方向分类
+        # 加權組合
+        w_reg = self.config.direction_reward_weight  # NOTE: 變量名direction_reward_weight實際控制回歸損失，非方向分類
         w_cls = self.config.magnitude_reward_weight
         
         total_loss = w_reg * reg_loss + w_cls * cls_loss
@@ -257,7 +236,7 @@ class ModelTrainer:
         return total_loss, reg_loss, cls_loss
     
     def _train_epoch(self, train_loader: DataLoader) -> Tuple[float, float, float]:
-        """训练一个epoch（label smoothing已内置在_combined_loss中）"""
+        """訓練一個epoch（label smoothing已內置在_combined_loss中）"""
         self.model.train()
         
         total_loss_sum = 0.0
@@ -278,7 +257,7 @@ class ModelTrainer:
             
             if torch.isnan(total_loss):
                 raise ModelTrainingError(
-                    "训练损失包含NaN，请检查学习率或数据",
+                    "訓練損失包含NaN，請檢查學習率或數據",
                     {'lr': self.optimizer.param_groups[0]['lr']}
                 )
             
@@ -306,15 +285,15 @@ class ModelTrainer:
     @torch.no_grad()
     def _validate_epoch(self, val_loader: DataLoader) -> Tuple[float, float, float]:
         """
-        验证一个epoch
+        驗證一個epoch
         
-        在验证集上评估模型，不计算梯度。
+        在驗證集上評估模型，不計算梯度。
         
-        参数:
-            val_loader: 验证数据加载器
+        參數:
+            val_loader: 驗證數據加載器
         
         返回:
-            (平均总损失, 平均回归损失, 平均分类损失)
+            (平均總損失, 平均回歸損失, 平均分類損失)
         """
         if val_loader is None:
             return float('inf'), float('inf'), float('inf')
@@ -357,23 +336,23 @@ class ModelTrainer:
         verbose: bool = True
     ) -> TrainingMetrics:
         """
-        完整训练流程
+        完整訓練流程
         
-        步骤：
-        1. 初始化模型和优化器
-        2. 循环训练epochs
-        3. 每个epoch后验证
-        4. 早停判断
+        步驟：
+        1. 初始化模型和優化器
+        2. 循環訓練epochs
+        3. 每個epoch後驗證
+        4. 早停判斷
         5. 保存最佳模型
         
-        参数:
-            train_loader: 训练数据
-            val_loader: 验证数据（可选，None则使用训练集评估）
-            epochs: 训练轮数（None使用配置中的值）
-            verbose: 是否打印训练进度
+        參數:
+            train_loader: 訓練數據
+            val_loader: 驗證數據（可選，None則使用訓練集評估）
+            epochs: 訓練輪數（None使用配置中的值）
+            verbose: 是否列印訓練進度
         
         返回:
-            TrainingMetrics训练指标记录
+            TrainingMetrics訓練指標記錄
         """
         if epochs is None:
             epochs = self.config.epochs
@@ -381,7 +360,7 @@ class ModelTrainer:
         # 1. 初始化模型
         self.model = StockTransformer(self.config).to(self.device)
         
-        # 2. 配置优化器
+        # 2. 配置優化器
         if self.config.optimizer == 'adamw':
             self.optimizer = optim.AdamW(
                 self.model.parameters(),
@@ -402,7 +381,7 @@ class ModelTrainer:
                 weight_decay=self.config.weight_decay
             )
         
-        # 3. 学习率调度器
+        # 3. 學習率調度器
         scheduler_type = getattr(self.config, 'scheduler_type', 'plateau')
         if scheduler_type == 'cosine':
             T_0 = getattr(self.config, 'cosine_T_0', epochs // 2)
@@ -418,13 +397,13 @@ class ModelTrainer:
                 patience=self.config.early_stopping_patience // 2,
             )
         
-        # 4. 重置指标
+        # 4. 重置指標
         self.metrics = TrainingMetrics()
         best_model_state = None
         patience_counter = 0
         
         logger.info(
-            f"开始训练: {epochs} 轮, "
+            f"開始訓練: {epochs} 輪, "
             f"batch_size={self.config.batch_size}, "
             f"lr={self.config.learning_rate}, "
             f"device={self.device}"
@@ -435,13 +414,13 @@ class ModelTrainer:
         for epoch in range(epochs):
             epoch_start = time.perf_counter()
             
-            # 训练
+            # 訓練
             train_total, train_reg, train_cls = self._train_epoch(train_loader)
             
-            # 验证
+            # 驗證
             val_total, val_reg, val_cls = self._validate_epoch(val_loader)
             
-            # 学习率调度
+            # 學習率調度
             current_lr = self.optimizer.param_groups[0]['lr']
             if isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
                 self.scheduler.step(epoch)
@@ -450,14 +429,14 @@ class ModelTrainer:
             else:
                 self.scheduler.step(train_total)
             
-            # 记录指标
+            # 記錄指標
             self.metrics.update(
                 epoch, train_total, val_total,
                 train_reg, train_cls, current_lr,
                 val_reg, val_cls
             )
             
-            # 打印进度
+            # 列印進度
             epoch_time = time.perf_counter() - epoch_start
             if verbose and (epoch % max(1, epochs // 10) == 0 or epoch < 5 or epoch == epochs - 1):
                 logger.info(
@@ -469,7 +448,7 @@ class ModelTrainer:
                 )
                 sys.stdout.flush()
             
-            # 早停判断
+            # 早停判斷
             if val_total < self.metrics.best_val_loss:
                 self.metrics.best_val_loss = val_total
                 self.metrics.best_epoch = epoch
@@ -480,19 +459,19 @@ class ModelTrainer:
             
             if patience_counter >= self.config.early_stopping_patience:
                 logger.info(
-                    f"早停: 验证损失连续 {patience_counter} 轮未改善, "
-                    f"最佳轮次: epoch {self.metrics.best_epoch+1}"
+                    f"早停: 驗證損失連續 {patience_counter} 輪未改善, "
+                    f"最佳輪次: epoch {self.metrics.best_epoch+1}"
                 )
                 break
         
         train_duration = time.perf_counter() - train_start
         logger.info(
-            f"训练完成: {train_duration/60:.1f}min, "
-            f"最佳验证损失: {self.metrics.best_val_loss:.6f} "
+            f"訓練完成: {train_duration/60:.1f}min, "
+            f"最佳驗證損失: {self.metrics.best_val_loss:.6f} "
             f"(Epoch {self.metrics.best_epoch+1})"
         )
         
-        # 5. 恢复最佳模型
+        # 5. 恢復最佳模型
         if best_model_state is not None:
             self.model.load_state_dict(best_model_state)
         
@@ -500,25 +479,25 @@ class ModelTrainer:
     
     def evaluate(self, test_loader: DataLoader) -> EvaluationResult:
         """
-        在测试集上评估模型精度
+        在測試集上評估模型精度
         
-        评估维度：
-        1. 方向准确率: 预测涨跌方向正确的比例
-        2. RMSE: 预测收益率与真实收益率的均方根误差
-        3. MAE: 平均绝对误差
-        4. Sharpe Ratio: 基于预测信号的夏普比率
-        5. R²: 决定系数
+        評估維度：
+        1. 方向準確率: 預測漲跌方向正確的比例
+        2. RMSE: 預測收益率與真實收益率的均方根誤差
+        3. MAE: 平均絕對誤差
+        4. Sharpe Ratio: 基於預測信號的夏普比率
+        5. R²: 決定係數
         
-        时间复杂度: O(n_batches * batch_size * prediction_horizon)
+        時間複雜度: O(n_batches * batch_size * prediction_horizon)
         
-        参数:
-            test_loader: 测试数据加载器
+        參數:
+            test_loader: 測試數據加載器
         
         返回:
-            EvaluationResult评估结果
+            EvaluationResult評估結果
         """
         if self.model is None:
-            raise ModelError("模型未训练，请先调用 train()")
+            raise ModelError("模型未訓練，請先調用 train()")
         
         self.model.eval()
         
@@ -538,7 +517,7 @@ class ModelTrainer:
                 all_cls_preds.append(torch.sigmoid(cls_pred).cpu().numpy())
                 all_cls_targets.append(y_cls.numpy())
         
-        # 合并所有batch的结果
+        # 合併所有batch的結果
         reg_preds = np.concatenate(all_reg_preds, axis=0)  # (n_samples, horizon)
         reg_targets = np.concatenate(all_reg_targets, axis=0)
         cls_preds = np.concatenate(all_cls_preds, axis=0)
@@ -546,24 +525,24 @@ class ModelTrainer:
         
         n_samples = reg_preds.shape[0]
         
-        # 1. 方向准确率
-        # 比较预测概率>0.5与真实方向
+        # 1. 方向準確率
+        # 比較預測概率>0.5與真實方向
         direction_correct = ((cls_preds > 0.5) == (cls_targets > 0.5)).mean()
         
-        # 2. RMSE (均方根误差)
+        # 2. RMSE (均方根誤差)
         rmse = np.sqrt(np.mean((reg_preds - reg_targets) ** 2))
         
-        # 3. MAE (平均绝对误差)
+        # 3. MAE (平均絕對誤差)
         mae = np.mean(np.abs(reg_preds - reg_targets))
         
-        # 4. 简化夏普比率
-        # 假设按预测信号交易：预测收益>0做多，<0做空
+        # 4. 簡化夏普比率
+        # 假設按預測信號交易：預測收益>0做多，<0做空
         trade_returns = np.where(reg_preds > 0, reg_targets, -reg_targets)
         sharpe = np.mean(trade_returns) / (np.std(trade_returns) + 1e-8)
-        # 年化（假设每个样本为1个交易日）
+        # 年化（假設每個樣本為1個交易日）
         sharpe_annual = sharpe * np.sqrt(252)
         
-        # 5. R² 决定系数
+        # 5. R² 決定係數
         ss_res = np.sum((reg_targets - reg_preds) ** 2)
         ss_tot = np.sum((reg_targets - np.mean(reg_targets)) ** 2)
         r_squared = 1 - ss_res / (ss_tot + 1e-8)
@@ -577,12 +556,12 @@ class ModelTrainer:
             total_samples=n_samples
         )
         
-        # 打印评估报告
+        # 列印評估報告
         logger.info("=" * 50)
-        logger.info("           模型评估报告")
+        logger.info("           模型評估報告")
         logger.info("=" * 50)
-        logger.info(f"  测试样本数:     {result.total_samples:,}")
-        logger.info(f"  方向准确率:     {result.direction_accuracy:.2%}")
+        logger.info(f"  測試樣本數:     {result.total_samples:,}")
+        logger.info(f"  方向準確率:     {result.direction_accuracy:.2%}")
         logger.info(f"  RMSE:           {result.rmse:.6f}")
         logger.info(f"  MAE:            {result.mae:.6f}")
         logger.info(f"  年化夏普比率:   {result.sharpe_ratio:.4f}")
@@ -590,10 +569,10 @@ class ModelTrainer:
         logger.info(f"  精度合格:       {'✓ 是' if result.is_acceptable else '✗ 否'}")
         logger.info("=" * 50)
         
-        # 检查精度是否达标
+        # 檢查精度是否達標
         if not result.is_acceptable:
             logger.warning(
-                f"模型精度不达标！方向准确率 {result.direction_accuracy:.2%} "
+                f"模型精度不達標！方向準確率 {result.direction_accuracy:.2%} "
                 f"(要求 ≥ {self.config.min_direction_accuracy:.0%}), "
                 f"RMSE {result.rmse:.6f} (要求 < {self.config.max_rmse})"
             )
@@ -602,16 +581,16 @@ class ModelTrainer:
     
     def save_model(self, name: str = "transformer_stock") -> Path:
         """
-        保存训练好的模型
+        保存訓練好的模型
         
-        参数:
-            name: 模型名称
+        參數:
+            name: 模型名稱
         
         返回:
-            模型文件路径
+            模型文件路徑
         """
         if self.model is None:
-            raise ModelError("没有可保存的模型")
+            raise ModelError("沒有可保存的模型")
         
         metadata = {
             'model_params': {
@@ -638,40 +617,40 @@ class ModelTrainer:
     
     def load_model(self, name: str) -> None:
         """
-        加载已训练的模型
+        加載已訓練的模型
         
-        参数:
-            name: 模型名称
+        參數:
+            name: 模型名稱
         """
         self.model, metadata = self.storage.load_torch_model(
             StockTransformer, name
         )
         self.model = self.model.to(self.device)
-        logger.info(f"模型 {name} 已加载到 {self.device}")
+        logger.info(f"模型 {name} 已加載到 {self.device}")
 
 
 # ============================================================================
-# 超参数调优器
+# 超參數調優器
 # ============================================================================
 class HyperparameterTuner:
     """
-    自动超参数调优器
+    自動超參數調優器
     
-    当模型精度不达标时，自动搜索最优超参数组合。
+    當模型精度不達標時，自動搜索最優超參數組合。
     
-    调参策略（按优先级）：
-    1. 调整学习率（对数空间: 1e-5 ~ 1e-2）
-    2. 调整正则化参数（dropout: 0.05~0.3, weight_decay: 1e-6~1e-3）
-    3. 调整模型架构（d_model: 128~512, n_layers: 2~6）
-    4. 调整奖励权重（方向vs幅度）
+    調參策略（按優先級）：
+    1. 調整學習率（對數空間: 1e-5 ~ 1e-2）
+    2. 調整正則化參數（dropout: 0.05~0.3, weight_decay: 1e-6~1e-3）
+    3. 調整模型架構（d_model: 128~512, n_layers: 2~6）
+    4. 調整獎勵權重（方向vs幅度）
     
-    搜索方法：网格搜索（小空间）+ 贝叶斯优化（大空间）
+    搜索方法：網格搜索（小空間）+ 貝葉斯優化（大空間）
     """
     
     def __init__(self, base_config: ModelConfig):
         """
-        参数:
-            base_config: 基础配置（调参将在此之上修改）
+        參數:
+            base_config: 基礎配置（調參將在此之上修改）
         """
         self.base_config = base_config
     
@@ -679,13 +658,13 @@ class HyperparameterTuner:
         self, overrides: Dict[str, Any]
     ) -> ModelConfig:
         """
-        根据覆盖参数创建配置变体
+        根據覆蓋參數創建配置變體
         
-        参数:
-            overrides: 要覆盖的参数字典
+        參數:
+            overrides: 要覆蓋的參數字典
         
         返回:
-            新的ModelConfig实例
+            新的ModelConfig實例
         """
         new_config = copy.deepcopy(self.base_config)
         for key, value in overrides.items():
@@ -701,25 +680,25 @@ class HyperparameterTuner:
         n_trials: int = 7
     ) -> Tuple[float, Optional[EvaluationResult]]:
         """
-        学习率调优（对数空间搜索）
+        學習率調優（對數空間搜索）
         
-        在[1e-5, 1e-2]范围内等比搜索n_trials个学习率，
-        选择验证损失最低的配置。
+        在[1e-5, 1e-2]範圍內等比搜索n_trials個學習率，
+        選擇驗證損失最低的配置。
         
-        时间复杂度: O(n_trials * epochs * n_batches)
+        時間複雜度: O(n_trials * epochs * n_batches)
         
-        参数:
-            train_loader: 训练数据
-            val_loader: 验证数据
-            lr_range: 学习率搜索范围
-            n_trials: 试验次数
+        參數:
+            train_loader: 訓練數據
+            val_loader: 驗證數據
+            lr_range: 學習率搜索範圍
+            n_trials: 試驗次數
         
         返回:
-            (最优学习率, 对应的评估结果)
+            (最優學習率, 對應的評估結果)
         """
-        logger.info(f"学习率调优: {lr_range}, {n_trials} 次试验")
+        logger.info(f"學習率調優: {lr_range}, {n_trials} 次試驗")
         
-        # 在对数空间均匀采样
+        # 在對數空間均勻採樣
         lr_values = np.logspace(
             np.log10(lr_range[0]), np.log10(lr_range[1]), n_trials
         )
@@ -731,7 +710,7 @@ class HyperparameterTuner:
         for lr in lr_values:
             config = self._create_config_variant({
                 'learning_rate': float(lr),
-                'epochs': 30,  # 调参时用较少epoch
+                'epochs': 30,  # 調參時用較少epoch
             })
             
             trainer = ModelTrainer(config)
@@ -751,12 +730,12 @@ class HyperparameterTuner:
                 logger.debug(f"  lr={lr:.2e}: val_loss={val_loss:.6f}")
                 
             except ModelTrainingError as e:
-                logger.warning(f"  lr={lr:.2e}: 训练失败 - {e}")
+                logger.warning(f"  lr={lr:.2e}: 訓練失敗 - {e}")
                 continue
         
-        logger.info(f"最优学习率: {best_lr:.2e} (val_loss={best_val_loss:.6f})")
+        logger.info(f"最優學習率: {best_lr:.2e} (val_loss={best_val_loss:.6f})")
         
-        return float(best_lr), None  # 快速调参模式不运行完整评估
+        return float(best_lr), None  # 快速調參模式不運行完整評估
     
     def tune_regularization(
         self,
@@ -764,16 +743,16 @@ class HyperparameterTuner:
         val_loader: DataLoader
     ) -> Dict[str, float]:
         """
-        正则化参数调优
+        正則化參數調優
         
-        同时搜索dropout和weight_decay的最优组合。
+        同時搜索dropout和weight_decay的最優組合。
         
-        参数:
-            train_loader: 训练数据
-            val_loader: 验证数据
+        參數:
+            train_loader: 訓練數據
+            val_loader: 驗證數據
         
         返回:
-            最优参数 {'dropout': x, 'weight_decay': y}
+            最優參數 {'dropout': x, 'weight_decay': y}
         """
         dropout_values = [0.05, 0.1, 0.15, 0.2, 0.3]
         wd_values = [1e-6, 1e-5, 1e-4, 1e-3]
@@ -781,7 +760,7 @@ class HyperparameterTuner:
         best_params = {'dropout': 0.1, 'weight_decay': 1e-5}
         best_val_loss = float('inf')
         
-        logger.info(f"正则化参数调优: dropout={dropout_values}, wd={wd_values}")
+        logger.info(f"正則化參數調優: dropout={dropout_values}, wd={wd_values}")
         
         for dropout in dropout_values:
             for wd in wd_values:
@@ -807,7 +786,7 @@ class HyperparameterTuner:
                 except ModelTrainingError:
                     continue
         
-        logger.info(f"最优正则化: {best_params}")
+        logger.info(f"最優正則化: {best_params}")
         return best_params
     
     def tune_architecture(
@@ -816,16 +795,16 @@ class HyperparameterTuner:
         val_loader: DataLoader
     ) -> Dict[str, int]:
         """
-        模型架构调优
+        模型架構調優
         
-        搜索d_model和n_layers的最优组合。
+        搜索d_model和n_layers的最優組合。
         
-        参数:
-            train_loader: 训练数据
-            val_loader: 验证数据
+        參數:
+            train_loader: 訓練數據
+            val_loader: 驗證數據
         
         返回:
-            最优参数 {'d_model': x, 'n_encoder_layers': y}
+            最優參數 {'d_model': x, 'n_encoder_layers': y}
         """
         d_model_values = [128, 192, 256, 384, 512]
         n_layers_values = [2, 3, 4, 6]
@@ -833,14 +812,14 @@ class HyperparameterTuner:
         best_params = {'d_model': 256, 'n_encoder_layers': 4}
         best_val_loss = float('inf')
         
-        logger.info("模型架构调优...")
+        logger.info("模型架構調優...")
         
         for d_model in d_model_values:
             for n_layers in n_layers_values:
-                # 确保d_model能被n_heads整除
+                # 確保d_model能被n_heads整除
                 n_heads = max(4, d_model // 32)
                 if d_model % n_heads != 0:
-                    n_heads = 8  # 降级到默认值
+                    n_heads = 8  # 降級到默認值
                 
                 config = self._create_config_variant({
                     'd_model': d_model,
@@ -869,7 +848,7 @@ class HyperparameterTuner:
                 except (ModelTrainingError, RuntimeError):
                     continue
         
-        logger.info(f"最优架构: {best_params}")
+        logger.info(f"最優架構: {best_params}")
         return best_params
     
     def tune_reward_weights(
@@ -879,15 +858,15 @@ class HyperparameterTuner:
         test_loader: DataLoader
     ) -> Dict[str, float]:
         """
-        奖励函数权重调优
+        獎勵函數權重調優
         
-        在方向和幅度之间寻找最优平衡。
+        在方向和幅度之間尋找最優平衡。
         
-        参数:
-            train_loader, val_loader, test_loader: 数据加载器
+        參數:
+            train_loader, val_loader, test_loader: 數據加載器
         
         返回:
-            最优权重 {'direction_weight': x, 'magnitude_weight': y}
+            最優權重 {'direction_weight': x, 'magnitude_weight': y}
         """
         weight_combinations = [
             (0.3, 0.7), (0.4, 0.6), (0.5, 0.5),
@@ -895,9 +874,9 @@ class HyperparameterTuner:
         ]
         
         best_params = {'direction_weight': 0.6, 'magnitude_weight': 0.4}
-        best_score = 0.0  # 综合得分（方向准确率 - RMSE）
+        best_score = 0.0  # 綜合得分（方向準確率 - RMSE）
         
-        logger.info("奖励权重调优...")
+        logger.info("獎勵權重調優...")
         
         for dir_w, mag_w in weight_combinations:
             config = self._create_config_variant({
@@ -912,7 +891,7 @@ class HyperparameterTuner:
                 trainer.train(train_loader, val_loader)
                 result = trainer.evaluate(test_loader)
                 
-                # 综合得分 = 方向准确率 - RMSE
+                # 綜合得分 = 方向準確率 - RMSE
                 score = result.direction_accuracy - result.rmse
                 
                 if score > best_score:
@@ -930,7 +909,7 @@ class HyperparameterTuner:
             except ModelTrainingError:
                 continue
         
-        logger.info(f"最优奖励权重: {best_params}")
+        logger.info(f"最優獎勵權重: {best_params}")
         return best_params
     
     def auto_tune(
@@ -940,43 +919,43 @@ class HyperparameterTuner:
         test_loader: DataLoader
     ) -> ModelConfig:
         """
-        全自动调参
+        全自動調參
         
-        按优先级依次调优：
-        1. 学习率
-        2. 正则化参数
-        3. 架构参数
-        4. 奖励权重
+        按優先級依次調優：
+        1. 學習率
+        2. 正則化參數
+        3. 架構參數
+        4. 獎勵權重
         
-        每步调优后检查精度是否达标，达标则提前停止。
+        每步調優後檢查精度是否達標，達標則提前停止。
         
-        参数:
-            train_loader, val_loader, test_loader: 数据加载器
+        參數:
+            train_loader, val_loader, test_loader: 數據加載器
         
         返回:
-            优化后的ModelConfig
+            優化後的ModelConfig
         """
         logger.info("=" * 50)
-        logger.info("   开始自动超参数调优")
+        logger.info("   開始自動超參數調優")
         logger.info("=" * 50)
         
         config = copy.deepcopy(self.base_config)
         
-        # Step 1: 学习率调优
-        logger.info("\n[Step 1/4] 学习率调优...")
+        # Step 1: 學習率調優
+        logger.info("\n[Step 1/4] 學習率調優...")
         best_lr, _ = self.tune_learning_rate(train_loader, val_loader)
         config.learning_rate = best_lr
         
-        # 检查精度
+        # 檢查精度
         trainer = ModelTrainer(config)
         trainer.train(train_loader, val_loader)
         result = trainer.evaluate(test_loader)
         if result.is_acceptable:
-            logger.info("精度已达标，停止调参")
+            logger.info("精度已達標，停止調參")
             return config
         
-        # Step 2: 正则化调优
-        logger.info("\n[Step 2/4] 正则化参数调优...")
+        # Step 2: 正則化調優
+        logger.info("\n[Step 2/4] 正則化參數調優...")
         reg_params = self.tune_regularization(train_loader, val_loader)
         config.dropout = reg_params['dropout']
         config.weight_decay = reg_params['weight_decay']
@@ -985,11 +964,11 @@ class HyperparameterTuner:
         trainer.train(train_loader, val_loader)
         result = trainer.evaluate(test_loader)
         if result.is_acceptable:
-            logger.info("精度已达标，停止调参")
+            logger.info("精度已達標，停止調參")
             return config
         
-        # Step 3: 架构调优
-        logger.info("\n[Step 3/4] 模型架构调优...")
+        # Step 3: 架構調優
+        logger.info("\n[Step 3/4] 模型架構調優...")
         arch_params = self.tune_architecture(train_loader, val_loader)
         for key, value in arch_params.items():
             setattr(config, key, value)
@@ -998,19 +977,19 @@ class HyperparameterTuner:
         trainer.train(train_loader, val_loader)
         result = trainer.evaluate(test_loader)
         if result.is_acceptable:
-            logger.info("精度已达标，停止调参")
+            logger.info("精度已達標，停止調參")
             return config
         
-        # Step 4: 奖励权重调优
-        logger.info("\n[Step 4/4] 奖励权重调优...")
+        # Step 4: 獎勵權重調優
+        logger.info("\n[Step 4/4] 獎勵權重調優...")
         reward_params = self.tune_reward_weights(
             train_loader, val_loader, test_loader
         )
         config.direction_reward_weight = reward_params['direction_weight']
         config.magnitude_reward_weight = reward_params['magnitude_weight']
         
-        logger.info("\n自动调参完成!")
-        logger.info(f"最终配置: lr={config.learning_rate:.2e}, "
+        logger.info("\n自動調參完成!")
+        logger.info(f"最終配置: lr={config.learning_rate:.2e}, "
                    f"dropout={config.dropout}, wd={config.weight_decay:.1e}, "
                    f"d_model={config.d_model}, layers={config.n_encoder_layers}")
         

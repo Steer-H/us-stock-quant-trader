@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-每日新闻情感更新脚本
+每日新聞情感更新腳本
 
-从Google News RSS抓取最新新闻，更新parquet文件中的情感特征。
-建议通过cron每天运行一次（美股收盘后）。
+從Google News RSS抓取最新新聞，更新parquet文件中的情感特徵。
+建議通過cron每天運行一次（美股收盤後）。
 
-运行方式:
+運行方式:
     PYTHONPATH=. python3 scripts/update_daily_sentiment.py
 """
 import sys
@@ -38,7 +38,7 @@ def main():
     scraper = NewsScraper()
     today = date.today()
     
-    logger.info(f"开始每日情感更新: {today}, {len(tickers)} 只股票")
+    logger.info(f"開始每日情感更新: {today}, {len(tickers)} 只股票")
     
     updated = 0
     total_news = 0
@@ -49,7 +49,7 @@ def main():
             if df is None or len(df) == 0:
                 continue
             
-            # 抓取最近新闻
+            # 抓取最近新聞
             news_items = scraper.fetch_ticker_news(
                 ticker, days=7, sources=['google']
             )
@@ -61,11 +61,11 @@ def main():
             if daily.empty:
                 continue
             
-            # 归一化时区
+            # 歸一化時區
             if daily.index.tz is not None:
                 daily.index = daily.index.tz_localize(None)
             
-            # 滚动平均
+            # 滾動平均
             daily['news_sentiment_3d'] = daily['news_sentiment_daily'].rolling(
                 3, min_periods=1
             ).mean()
@@ -91,7 +91,7 @@ def main():
     
     logger.info(
         f"每日更新完成: {updated}/{len(tickers)} 只股票更新, "
-        f"共 {total_news} 条新闻"
+        f"共 {total_news} 條新聞"
     )
 
 

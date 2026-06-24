@@ -1,26 +1,4 @@
-"""
-美股量化交易系统 - 美股历史数据爬虫模块
-
-负责从公开数据源抓取美股历史交易数据（2010-2025），
-为ML模型提供训练数据。
-
-核心功能：
-- 获取S&P 500成分股列表（含历史变更）
-- 批量抓取日线OHLCV数据
-- 自动处理网络异常、速率限制和重试
-- 数据完整性校验（行数、日期连续性等）
-- 支持断点续传（增量更新）
-
-数据源：
-- 主要: Yahoo Finance (免费，覆盖全面)
-- 备用: Alpha Vantage (API密钥可选)
-- 参考: Wikipedia (S&P 500成分股列表)
-
-注意事项：
-- 爬虫行为遵循 robots.txt 和 API 使用条款
-- 速率限制：每秒不超过2个请求（Yahoo Finance限制）
-- 仅用于个人学习和研究目的
-"""
+"""Stock data crawler for Yahoo Finance."""
 
 import logging
 import time
@@ -50,21 +28,21 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 爬虫结果数据结构
+# 爬蟲結果數據結構
 # ============================================================================
 @dataclass
 class CrawlResult:
     """
-    单次爬取任务的结果
+    單次爬取任務的結果
     
-    属性:
-        ticker: 股票代码
-        status: 'success', 'failed', 'skipped'(已存在且无需更新)
-        rows: 获取的数据行数
-        start_date: 数据开始日期
-        end_date: 数据结束日期
-        error: 错误信息（仅失败时）
-        duration: 爬取耗时（秒）
+    屬性:
+        ticker: 股票代碼
+        status: 'success', 'failed', 'skipped'(已存在且無需更新)
+        rows: 獲取的數據行數
+        start_date: 數據開始日期
+        end_date: 數據結束日期
+        error: 錯誤信息（僅失敗時）
+        duration: 爬取耗時（秒）
     """
     ticker: str
     status: str
@@ -78,16 +56,16 @@ class CrawlResult:
 @dataclass
 class CrawlSummary:
     """
-    批量爬取的汇总统计
+    批量爬取的匯總統計
     
-    属性:
-        total_tickers: 总共目标股票数
-        success_count: 成功获取的数量
-        failed_count: 失败的数量
-        skipped_count: 跳过的数量
-        total_rows: 总共获取的数据行数
-        total_duration: 总耗时（秒）
-        results: 每只股票的详细结果列表
+    屬性:
+        total_tickers: 總共目標股票數
+        success_count: 成功獲取的數量
+        failed_count: 失敗的數量
+        skipped_count: 跳過的數量
+        total_rows: 總共獲取的數據行數
+        total_duration: 總耗時（秒）
+        results: 每隻股票的詳細結果列表
     """
     total_tickers: int = 0
     success_count: int = 0
@@ -105,7 +83,7 @@ class CrawlSummary:
         return self.success_count / self.total_tickers
     
     def to_dict(self) -> Dict:
-        """转换为字典格式（便于日志和报告）"""
+        """轉換為字典格式（便於日誌和報告）"""
         return {
             'total_tickers': self.total_tickers,
             'success_count': self.success_count,
@@ -119,25 +97,25 @@ class CrawlSummary:
 
 
 # ============================================================================
-# 通用美股历史数据爬虫
+# 通用美股歷史數據爬蟲
 # ============================================================================
 class StockCrawler:
     """
-    美股历史数据爬虫基类
+    美股歷史數據爬蟲基類
     
-    提供通用的爬取逻辑：
-    - 单股爬取
-    - 批量爬取（并发）
-    - 增量更新（仅获取缺失的日期）
-    - 断点续传（跳过已有的数据）
+    提供通用的爬取邏輯：
+    - 單股爬取
+    - 批量爬取（並發）
+    - 增量更新（僅獲取缺失的日期）
+    - 斷點續傳（跳過已有的數據）
     
-    子类需要实现 _get_ticker_list() 方法提供股票列表。
+    子類需要實現 _get_ticker_list() 方法提供股票列表。
     """
     
     def __init__(self, config: DataSourceConfig = None):
         """
-        参数:
-            config: 数据源配置（None则使用默认配置）
+        參數:
+            config: 數據源配置（None則使用默認配置）
         """
         self.config = config or DataSourceConfig()
         self.fetcher = create_fetcher(self.config)
@@ -151,40 +129,40 @@ class StockCrawler:
                      end_date: str = '2025-12-31',
                      force_update: bool = False) -> CrawlResult:
         """
-        爬取单只股票的完整历史数据
+        爬取單只股票的完整歷史數據
         
         流程：
-        1. 检查本地是否已有数据（增量更新）
-        2. 从Yahoo Finance获取日线OHLCV数据
-        3. 数据清洗（去异常值、填缺失值）
-        4. 计算技术指标
-        5. 分别保存原始数据和加工数据
+        1. 檢查本地是否已有數據（增量更新）
+        2. 從Yahoo Finance獲取日線OHLCV數據
+        3. 數據清洗（去異常值、填缺失值）
+        4. 計算技術指標
+        5. 分別保存原始數據和加工數據
         
-        时间复杂度: O(n)，n为数据行数
-        空间复杂度: O(n)
+        時間複雜度: O(n)，n為數據行數
+        空間複雜度: O(n)
         
-        参数:
-            ticker: 股票代码
-            start_date: 数据起始日期
-            end_date: 数据结束日期
-            force_update: 是否强制更新（忽略已有数据）
+        參數:
+            ticker: 股票代碼
+            start_date: 數據起始日期
+            end_date: 數據結束日期
+            force_update: 是否強制更新（忽略已有數據）
         
         返回:
-            CrawlResult对象，包含爬取状态和统计信息
+            CrawlResult對象，包含爬取狀態和統計信息
         """
         start = time.perf_counter()
         
         try:
-            # 1. 检查本地缓存
+            # 1. 檢查本地緩存
             if not force_update and self.processed_store.exists(f"{ticker}_features"):
-                logger.info(f"{ticker} 特征数据已存在，跳过")
+                logger.info(f"{ticker} 特徵數據已存在，跳過")
                 return CrawlResult(
                     ticker=ticker, status='skipped',
                     duration=time.perf_counter() - start
                 )
             
-            # 2. 获取原始数据
-            logger.info(f"正在爬取 {ticker} 数据: {start_date} ~ {end_date}")
+            # 2. 獲取原始數據
+            logger.info(f"正在爬取 {ticker} 數據: {start_date} ~ {end_date}")
             
             df = self.fetcher.fetch_daily_bars(
                 ticker=ticker,
@@ -196,39 +174,39 @@ class StockCrawler:
             if df is None or df.empty:
                 return CrawlResult(
                     ticker=ticker, status='failed',
-                    error='无数据返回',
+                    error='無數據返回',
                     duration=time.perf_counter() - start
                 )
             
-            # 修复时区：Yahoo Finance返回tz-aware，pandas操作需要tz-naive
+            # 修復時區：Yahoo Finance返回tz-aware，pandas操作需要tz-naive
             if hasattr(df.index, 'tz') and df.index.tz is not None:
                 df.index = df.index.tz_localize(None)
             
-            # 3. 数据清洗
-            # 注意：使用链式调用的方式，每一步都返回self
-            self.cleaner.reset()  # 重置审计日志
+            # 3. 數據清洗
+            # 注意：使用鏈式調用的方式，每一步都返回self
+            self.cleaner.reset()  # 重置審計日誌
             
-            # 验证结构
+            # 驗證結構
             self.cleaner.validate_structure(df, ticker)
             
-            # 处理异常值
+            # 處理異常值
             self.cleaner.remove_outliers(df, ticker, 'close')
             
             # 填充缺失值
             self.cleaner.fill_missing(df, ticker)
             
-            # 检测幸存者偏差
+            # 檢測倖存者偏差
             self.cleaner.detect_survivorship_bias(df, ticker, end_date)
             
-            # 4. 保存原始数据（不可变存档）
+            # 4. 保存原始數據（不可變存檔）
             self.raw_store.save_raw(df.copy(), ticker)
             
-            # 5. 计算技术指标并保存加工数据
+            # 5. 計算技術指標並保存加工數據
             from data_pipeline.indicators import TechnicalIndicators
             features_df = TechnicalIndicators.add_all_indicators(df)
             self.processed_store.save(features_df, f"{ticker}_features")
             
-            # 6. 构建结果
+            # 6. 構建結果
             elapsed = time.perf_counter() - start
             result = CrawlResult(
                 ticker=ticker,
@@ -240,16 +218,16 @@ class StockCrawler:
             )
             
             logger.info(
-                f"✓ {ticker}: {len(df)} 行数据, "
+                f"✓ {ticker}: {len(df)} 行數據, "
                 f"{result.start_date} ~ {result.end_date}, "
-                f"耗时 {elapsed:.1f}s"
+                f"耗時 {elapsed:.1f}s"
             )
             
             return result
             
         except Exception as e:
             elapsed = time.perf_counter() - start
-            logger.error(f"✗ {ticker} 爬取失败: {type(e).__name__}: {e}")
+            logger.error(f"✗ {ticker} 爬取失敗: {type(e).__name__}: {e}")
             return CrawlResult(
                 ticker=ticker, status='failed',
                 error=f"{type(e).__name__}: {str(e)}",
@@ -262,45 +240,45 @@ class StockCrawler:
                     max_workers: Optional[int] = None,
                     random_delay: bool = True) -> CrawlSummary:
         """
-        批量并发爬取多只股票数据
+        批量並發爬取多隻股票數據
         
-        使用ThreadPoolExecutor实现并发爬取，适用于IO密集型任务。
-        每个线程独立爬取一只股票，互不干扰。
+        使用ThreadPoolExecutor實現並發爬取，適用於IO密集型任務。
+        每個線程獨立爬取一隻股票，互不幹擾。
         
-        注意：为防止触发Yahoo Finance的速率限制，
-        会在每次请求间添加随机延迟（0.5-2.0秒）。
+        注意：為防止觸發Yahoo Finance的速率限制，
+        會在每次請求間添加隨機延遲（0.5-2.0秒）。
         
-        时间复杂度: O(n*m/p)，n=股票数，m=平均每只数据量，p=并发数
-        空间复杂度: O(n*m)
+        時間複雜度: O(n*m/p)，n=股票數，m=平均每隻數據量，p=並發數
+        空間複雜度: O(n*m)
         
-        参数:
-            tickers: 股票代码列表
-            start_date: 数据起始日期
-            end_date: 数据结束日期
-            max_workers: 最大并发线程数（默认使用系统配置值）
-            random_delay: 是否在请求间添加随机延迟
+        參數:
+            tickers: 股票代碼列表
+            start_date: 數據起始日期
+            end_date: 數據結束日期
+            max_workers: 最大並發線程數（默認使用系統配置值）
+            random_delay: 是否在請求間添加隨機延遲
         
         返回:
-            CrawlSummary汇总统计
+            CrawlSummary匯總統計
         """
         if max_workers is None:
-            # 对于Yahoo Finance，建议不超过3个并发
+            # 對於Yahoo Finance，建議不超過3個並發
             max_workers = min(system_config.max_workers, 3)
         
         logger.info(
-            f"开始批量爬取: {len(tickers)} 只股票, "
+            f"開始批量爬取: {len(tickers)} 只股票, "
             f"{start_date} ~ {end_date}, "
-            f"并发数: {max_workers}"
+            f"並發數: {max_workers}"
         )
         
         overall_start = time.perf_counter()
         self._results = []
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
+            # 提交所有任務
             future_to_ticker = {}
             for i, ticker in enumerate(tickers):
-                # 错开请求时间，避免同时发出大量请求触发速率限制
+                # 錯開請求時間，避免同時發出大量請求觸發速率限制
                 if i > 0 and random_delay:
                     delay = random.uniform(0.3, 1.5)
                     time.sleep(delay)
@@ -310,20 +288,20 @@ class StockCrawler:
                 )
                 future_to_ticker[future] = ticker
             
-            # 收集结果
+            # 收集結果
             for future in as_completed(future_to_ticker):
                 ticker = future_to_ticker[future]
                 try:
                     result = future.result()
                     self._results.append(result)
                 except Exception as e:
-                    logger.error(f"{ticker} 线程异常: {e}")
+                    logger.error(f"{ticker} 線程異常: {e}")
                     self._results.append(CrawlResult(
                         ticker=ticker, status='failed',
-                        error=f"Thread异常: {str(e)}"
+                        error=f"Thread異常: {str(e)}"
                     ))
         
-        # 构建汇总统计
+        # 構建匯總統計
         overall_duration = time.perf_counter() - overall_start
         
         summary = CrawlSummary(
@@ -339,25 +317,25 @@ class StockCrawler:
         logger.info(
             f"批量爬取完成: "
             f"成功 {summary.success_count}, "
-            f"失败 {summary.failed_count}, "
-            f"跳过 {summary.skipped_count}, "
-            f"总计 {summary.total_rows} 行数据, "
-            f"总耗时 {overall_duration/60:.1f}min"
+            f"失敗 {summary.failed_count}, "
+            f"跳過 {summary.skipped_count}, "
+            f"總計 {summary.total_rows} 行數據, "
+            f"總耗時 {overall_duration/60:.1f}min"
         )
         
         return summary
     
     def incremental_update(self, tickers: List[str]) -> CrawlSummary:
         """
-        增量更新已有数据（仅获取最新的交易日数据）
+        增量更新已有數據（僅獲取最新的交易日數據）
         
-        适用于日常更新场景，避免重新爬取全部历史数据。
+        適用於日常更新場景，避免重新爬取全部歷史數據。
         
-        参数:
+        參數:
             tickers: 需要更新的股票列表
         
         返回:
-            CrawlSummary汇总统计
+            CrawlSummary匯總統計
         """
         latest_dates = {}
         
@@ -367,17 +345,17 @@ class StockCrawler:
                     df = self.processed_store.load(f"{ticker}_features")
                     latest_dates[ticker] = str(df.index.max().date())
                 else:
-                    logger.info(f"{ticker} 无历史数据，将全量爬取")
+                    logger.info(f"{ticker} 無歷史數據，將全量爬取")
             except Exception:
                 logger.debug(f"Non-critical error in stock_crawler.py: {e}", exc_info=True)
         
-        # 对每只股票执行增量爬取
+        # 對每隻股票執行增量爬取
         results = []
         for ticker in tickers:
             if ticker in latest_dates:
                 last_date = latest_dates[ticker]
                 today = date.today().isoformat()
-                # 如果最后数据日期和今天不同（考虑了周末）
+                # 如果最後數據日期和今天不同（考慮了周末）
                 if last_date < today:
                     result = self.crawl_single(
                         ticker, start_date=last_date, end_date=today
@@ -389,7 +367,7 @@ class StockCrawler:
                 result = self.crawl_single(ticker)
                 results.append(result)
         
-        # 构建汇总（简化版）
+        # 構建匯總（簡化版）
         return CrawlSummary(
             total_tickers=len(tickers),
             success_count=sum(1 for r in results if r.status == 'success'),
@@ -400,74 +378,74 @@ class StockCrawler:
         )
     
     def get_results(self) -> List[CrawlResult]:
-        """获取最近一次爬取的结果列表"""
+        """獲取最近一次爬取的結果列表"""
         return self._results.copy()
     
     def get_failed_tickers(self) -> List[str]:
-        """获取爬取失败的股票列表（用于重试）"""
+        """獲取爬取失敗的股票列表（用於重試）"""
         return [r.ticker for r in self._results if r.status == 'failed']
 
 
 # ============================================================================
-# S&P 500 成分股爬虫
+# S&P 500 成分股爬蟲
 # ============================================================================
 class SP500Crawler(StockCrawler):
     """
-    S&P 500 成分股专用爬虫
+    S&P 500 成分股專用爬蟲
     
-    从Wikipedia获取S&P 500当前成分股列表，
-    然后批量爬取历史数据。
+    從Wikipedia獲取S&P 500當前成分股列表，
+    然後批量爬取歷史數據。
     
-    S&P 500成分股列表来源：
+    S&P 500成分股列表來源：
     - Wikipedia: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
-    - 该页面每日更新，包含股票代码、公司名称、GICS行业分类
+    - 該頁面每日更新，包含股票代碼、公司名稱、GICS行業分類
     
-    注意事项：
-    - S&P 500成分股定期调整（季度rebalance），历史成分股可能与当前不同
-    - 已移除的股票不在此列表中（幸存者偏差问题）
+    注意事項：
+    - S&P 500成分股定期調整（季度rebalance），歷史成分股可能與當前不同
+    - 已移除的股票不在此列表中（倖存者偏差問題）
     """
     
-    # Wikipedia S&P 500 成分股页面URL
+    # Wikipedia S&P 500 成分股頁面URL
     SP500_WIKI_URL = (
         'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     )
     
     def get_sp500_tickers(self, force_refresh: bool = False) -> List[str]:
         """
-        从Wikipedia获取S&P 500当前成分股列表
+        從Wikipedia獲取S&P 500當前成分股列表
         
-        使用缓存机制：首次获取后缓存到本地CSV文件，
-        避免每次运行都请求Wikipedia。
+        使用緩存機制：首次獲取後緩存到本地CSV文件，
+        避免每次運行都請求Wikipedia。
         
-        Wikipedia页面结构：
-        - 第一个表格（class='wikitable sortable'）包含成分股信息
+        Wikipedia頁面結構：
+        - 第一個表格（class='wikitable sortable'）包含成分股信息
         - 列包括：Symbol, Security, GICS Sector, GICS Sub-Industry, etc.
         
-        时间复杂度: O(n)，n为成分股数量（约500）
-        空间复杂度: O(n)
+        時間複雜度: O(n)，n為成分股數量（約500）
+        空間複雜度: O(n)
         
-        参数:
-            force_refresh: 是否强制刷新（忽略缓存）
+        參數:
+            force_refresh: 是否強制刷新（忽略緩存）
         
         返回:
-            股票代码列表（大写，已排序）
+            股票代碼列表（大寫，已排序）
         """
         cache_path = RAW_DATA_DIR / 'sp500_tickers.csv'
         
-        # 1. 尝试从缓存加载
+        # 1. 嘗試從緩存加載
         if not force_refresh and cache_path.exists():
-            # 检查缓存是否在24小时内
+            # 檢查緩存是否在24小時內
             cache_age = time.time() - cache_path.stat().st_mtime
-            if cache_age < 86400:  # 24小时 = 86400秒
+            if cache_age < 86400:  # 24小時 = 86400秒
                 tickers = pd.read_csv(cache_path)['Symbol'].tolist()
-                logger.info(f"从缓存加载S&P 500成分股: {len(tickers)} 只")
+                logger.info(f"從緩存加載S&P 500成分股: {len(tickers)} 只")
                 return tickers
         
-        # 2. 从Wikipedia抓取
-        logger.info("从Wikipedia获取S&P 500成分股列表...")
+        # 2. 從Wikipedia抓取
+        logger.info("從Wikipedia獲取S&P 500成分股列表...")
         
         try:
-            # 发送HTTP GET请求
+            # 發送HTTP GET請求
             resp = requests.get(
                 self.SP500_WIKI_URL,
                 headers={'User-Agent': 'QuantResearch/1.0 (Educational)'},
@@ -478,13 +456,13 @@ class SP500Crawler(StockCrawler):
             # 使用BeautifulSoup解析HTML
             soup = BeautifulSoup(resp.text, 'html.parser')
             
-            # 定位成分股表格（页面第一个wikitable）
+            # 定位成分股表格（頁面第一個wikitable）
             table = soup.find('table', {'class': 'wikitable sortable'})
             if not table:
                 raise DataSourceError("未找到S&P 500成分股表格")
             
-            # 解析表格数据
-            rows = table.find_all('tr')[1:]  # 跳过表头
+            # 解析表格數據
+            rows = table.find_all('tr')[1:]  # 跳過表頭
             tickers = []
             
             for row in rows:
@@ -492,46 +470,46 @@ class SP500Crawler(StockCrawler):
                 if cols:
                     # 第一列通常是Symbol
                     symbol = cols[0].text.strip()
-                    # 过滤有效的美股ticker（1-5个大写字母）
-                    # 注意：部分股票代码含点号（如BRK.B），需要特殊处理
+                    # 過濾有效的美股ticker（1-5個大寫字母）
+                    # 注意：部分股票代碼含點號（如BRK.B），需要特殊處理
                     if symbol and len(symbol) <= 6:
-                        # 将点号替换为短横线（Yahoo Finance使用短横线）
+                        # 將點號替換為短橫線（Yahoo Finance使用短橫線）
                         symbol = symbol.replace('.', '-')
                         if validate_ticker(symbol.replace('-', '')):
                             tickers.append(symbol)
             
             if not tickers:
-                raise DataSourceError("解析S&P 500列表为空")
+                raise DataSourceError("解析S&P 500列表為空")
             
-            # 3. 保存到缓存
+            # 3. 保存到緩存
             pd.DataFrame({'Symbol': tickers}).to_csv(cache_path, index=False)
             
-            logger.info(f"S&P 500成分股获取完成: {len(tickers)} 只")
+            logger.info(f"S&P 500成分股獲取完成: {len(tickers)} 只")
             return sorted(tickers)
             
         except requests.RequestException as e:
-            logger.error(f"Wikipedia请求失败: {e}")
+            logger.error(f"Wikipedia請求失敗: {e}")
             
-            # 降级：如果缓存存在（即使过期），也使用缓存
+            # 降級：如果緩存存在（即使過期），也使用緩存
             if cache_path.exists():
                 tickers = pd.read_csv(cache_path)['Symbol'].tolist()
-                logger.warning(f"降级使用过期缓存: {len(tickers)} 只")
+                logger.warning(f"降級使用過期緩存: {len(tickers)} 只")
                 return tickers
             
-            raise DataSourceError(f"无法获取S&P 500成分股列表: {e}")
+            raise DataSourceError(f"無法獲取S&P 500成分股列表: {e}")
     
     def get_sp500_with_sectors(self) -> pd.DataFrame:
         """
-        获取S&P 500成分股及其行业分类
+        獲取S&P 500成分股及其行業分類
         
         返回包含以下列的DataFrame:
-        - Symbol: 股票代码
-        - Security: 公司名称
-        - GICS_Sector: GICS行业分类（如 Information Technology）
-        - GICS_Sub_Industry: GICS子行业分类
-        - Headquarters: 总部所在地
+        - Symbol: 股票代碼
+        - Security: 公司名稱
+        - GICS_Sector: GICS行業分類（如 Information Technology）
+        - GICS_Sub_Industry: GICS子行業分類
+        - Headquarters: 總部所在地
         - Date_Added: 加入S&P 500的日期
-        - CIK: SEC中央索引键
+        - CIK: SEC中央索引鍵
         
         返回:
             成分股信息DataFrame
@@ -554,18 +532,18 @@ class SP500Crawler(StockCrawler):
             dfs = pd.read_html(str(table))
             df = dfs[0]
             
-            # 标准化列名
+            # 標準化列名
             df.columns = [c.replace(' ', '_') for c in df.columns]
             
-            # 处理Symbol中的点号
+            # 處理Symbol中的點號
             if 'Symbol' in df.columns:
                 df['Symbol'] = df['Symbol'].str.replace('.', '-', regex=False)
             
-            logger.info(f"S&P 500成分股+行业分类获取完成: {len(df)} 行")
+            logger.info(f"S&P 500成分股+行業分類獲取完成: {len(df)} 行")
             return df
             
         except Exception as e:
-            logger.error(f"获取S&P 500详细信息失败: {e}")
+            logger.error(f"獲取S&P 500詳細信息失敗: {e}")
             return pd.DataFrame()
     
     def crawl_sp500_historical(
@@ -575,31 +553,31 @@ class SP500Crawler(StockCrawler):
         max_workers: int = 3
     ) -> CrawlSummary:
         """
-        爬取全部S&P 500成分股的历史数据（2010-2025）
+        爬取全部S&P 500成分股的歷史數據（2010-2025）
         
-        这是主要的入口方法，一键完成：
-        1. 获取S&P 500成分股列表
-        2. 批量并发爬取历史日线数据
-        3. 数据清洗+特征工程
-        4. 生成爬取报告
+        這是主要的入口方法，一鍵完成：
+        1. 獲取S&P 500成分股列表
+        2. 批量並發爬取歷史日線數據
+        3. 數據清洗+特徵工程
+        4. 生成爬取報告
         
-        参数:
-            start_date: 数据起始日期
-            end_date: 数据结束日期
-            max_workers: 最大并发数
+        參數:
+            start_date: 數據起始日期
+            end_date: 數據結束日期
+            max_workers: 最大並發數
         
         返回:
-            CrawlSummary汇总统计
+            CrawlSummary匯總統計
         """
-        # 1. 获取股票列表
-        with Timer("获取S&P 500成分股列表"):
+        # 1. 獲取股票列表
+        with Timer("獲取S&P 500成分股列表"):
             tickers = self.get_sp500_tickers()
         
         if not tickers:
-            raise DataSourceError("无法获取S&P 500成分股列表")
+            raise DataSourceError("無法獲取S&P 500成分股列表")
         
         logger.info(
-            f"准备爬取 {len(tickers)} 只S&P 500成分股的历史数据 "
+            f"準備爬取 {len(tickers)} 只S&P 500成分股的歷史數據 "
             f"({start_date} ~ {end_date})"
         )
         
@@ -611,64 +589,64 @@ class SP500Crawler(StockCrawler):
             max_workers=max_workers
         )
         
-        # 3. 重试失败的单只股票（最多重试1次）
+        # 3. 重試失敗的單只股票（最多重試1次）
         failed = self.get_failed_tickers()
         if failed:
-            logger.info(f"重试 {len(failed)} 只失败的股票...")
-            time.sleep(5)  # 等待冷却
+            logger.info(f"重試 {len(failed)} 只失敗的股票...")
+            time.sleep(5)  # 等待冷卻
             
             retry_results = []
             for ticker in failed:
-                time.sleep(random.uniform(1.0, 3.0))  # 逐个重试，增加间隔
+                time.sleep(random.uniform(1.0, 3.0))  # 逐個重試，增加間隔
                 result = self.crawl_single(ticker, start_date, end_date, force_update=True)
                 retry_results.append(result)
             
-            # 更新汇总统计
+            # 更新匯總統計
             retry_success = sum(1 for r in retry_results if r.status == 'success')
             summary.success_count += retry_success
             summary.failed_count -= retry_success
             summary.total_rows += sum(r.rows for r in retry_results if r.status == 'success')
             summary.results.extend(retry_results)
             
-            logger.info(f"重试完成: 新增成功 {retry_success}/{len(failed)}")
+            logger.info(f"重試完成: 新增成功 {retry_success}/{len(failed)}")
         
-        # 4. 打印最终报告
+        # 4. 列印最終報告
         self._print_summary(summary)
         
         return summary
     
     def _print_summary(self, summary: CrawlSummary) -> None:
-        """打印爬取汇总报告"""
+        """列印爬取匯總報告"""
         print("\n" + "=" * 60)
-        print("          S&P 500 历史数据爬取报告")
+        print("          S&P 500 歷史數據爬取報告")
         print("=" * 60)
-        print(f"  目标股票数:     {summary.total_tickers}")
-        print(f"  成功获取:       {summary.success_count}")
-        print(f"  失败:           {summary.failed_count}")
-        print(f"  跳过(已存在):    {summary.skipped_count}")
-        print(f"  总数据行数:     {summary.total_rows:,}")
+        print(f"  目標股票數:     {summary.total_tickers}")
+        print(f"  成功獲取:       {summary.success_count}")
+        print(f"  失敗:           {summary.failed_count}")
+        print(f"  跳過(已存在):    {summary.skipped_count}")
+        print(f"  總數據行數:     {summary.total_rows:,}")
         print(f"  成功率:         {summary.success_rate:.1%}")
-        print(f"  总耗时:         {summary.total_duration/60:.1f} 分钟")
+        print(f"  總耗時:         {summary.total_duration/60:.1f} 分鐘")
         
         if summary.failed_count > 0:
             failed_tickers = [r.ticker for r in summary.results if r.status == 'failed']
-            print(f"\n  失败股票 ({len(failed_tickers)}):")
+            print(f"\n  失敗股票 ({len(failed_tickers)}):")
             for i, ticker in enumerate(failed_tickers):
-                if i < 20:  # 最多显示20个
+                if i < 20:  # 最多顯示20個
                     error = next(
                         (r.error for r in summary.results 
-                         if r.ticker == ticker and r.error), '未知错误'
+                         if r.ticker == ticker and r.error), '未知錯誤'
                     )
                     print(f"    - {ticker}: {error[:80]}")
                 elif i == 20:
-                    print(f"    ... 还有 {len(failed_tickers) - 20} 只")
+                    print(f"    ... 還有 {len(failed_tickers) - 20} 只")
                     break
         
         print("=" * 60 + "\n")
 
 
 # ============================================================================
-# 便捷函数：快速爬取S&P 500数据
+# 便捷函數：快速爬取S&P 500數據
 # ============================================================================
 def crawl_sp500_data(
     start_date: str = '2010-01-01',
@@ -676,21 +654,21 @@ def crawl_sp500_data(
     max_workers: int = 3
 ) -> CrawlSummary:
     """
-    一键爬取S&P 500全部历史数据
+    一鍵爬取S&P 500全部歷史數據
     
-    这是对外暴露的便捷函数，隐藏了内部实现细节。
+    這是對外暴露的便捷函數，隱藏了內部實現細節。
     
     使用示例:
         from crawler import crawl_sp500_data
         summary = crawl_sp500_data('2010-01-01', '2025-12-31')
     
-    参数:
+    參數:
         start_date: 起始日期
-        end_date: 结束日期
-        max_workers: 并发数
+        end_date: 結束日期
+        max_workers: 並發數
     
     返回:
-        CrawlSummary汇总统计
+        CrawlSummary匯總統計
     """
     crawler = SP500Crawler()
     return crawler.crawl_sp500_historical(start_date, end_date, max_workers)

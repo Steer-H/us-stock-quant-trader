@@ -1,20 +1,4 @@
-"""
-美股量化交易系统 - 数据存储模块
-
-提供高效的数据持久化方案，支持：
-- HDF5格式: 适合大规模时间序列数据的读写（推荐）
-- Parquet格式: 列式存储，适合分析和查询
-- CSV格式: 通用格式，适合小数据量和人工查看
-
-存储层次结构：
-data/
-├── raw/          # 原始爬取数据（不可变）
-│   └── {ticker}_daily.parquet
-├── processed/    # 清洗后数据（含技术指标）
-│   └── {ticker}_features.parquet
-└── models/       # 训练好的ML模型
-    └── transformer_*.pt
-"""
+"""Parquet-based feature storage."""
 
 import logging
 from pathlib import Path
@@ -32,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 抽象存储接口
+# 抽象存儲接口
 # ============================================================================
 class DataStorage(ABC):
     """
-    数据存储抽象基类
+    數據存儲抽象基類
     
-    所有存储后端必须实现此接口。
+    所有存儲後端必須實現此接口。
     """
     
     @abstractmethod
@@ -46,32 +30,32 @@ class DataStorage(ABC):
         """
         保存DataFrame
         
-        参数:
-            df: 要保存的数据
-            key: 唯一标识（如 'AAPL_daily'）
+        參數:
+            df: 要保存的數據
+            key: 唯一標識（如 'AAPL_daily'）
         """
         pass
     
     @abstractmethod
     def load(self, key: str) -> pd.DataFrame:
         """
-        加载DataFrame
+        加載DataFrame
         
-        参数:
-            key: 数据标识
+        參數:
+            key: 數據標識
         
         返回:
-            加载的DataFrame
+            加載的DataFrame
         """
         pass
     
     @abstractmethod
     def exists(self, key: str) -> bool:
         """
-        检查数据是否存在
+        檢查數據是否存在
         
-        参数:
-            key: 数据标识
+        參數:
+            key: 數據標識
         
         返回:
             是否存在
@@ -81,62 +65,62 @@ class DataStorage(ABC):
     @abstractmethod
     def delete(self, key: str) -> None:
         """
-        删除数据
+        刪除數據
         
-        参数:
-            key: 数据标识
+        參數:
+            key: 數據標識
         """
         pass
     
     @abstractmethod
     def list_keys(self) -> List[str]:
         """
-        列出所有存储的数据标识
+        列出所有存儲的數據標識
         
         返回:
-            标识列表
+            標識列表
         """
         pass
 
 
 # ============================================================================
-# Parquet格式存储（推荐用于历史行情数据）
+# Parquet格式存儲（推薦用於歷史行情數據）
 # ============================================================================
 class ParquetStorage(DataStorage):
     """
-    基于Apache Parquet格式的数据存储
+    基於Apache Parquet格式的數據存儲
     
-    Parquet优势：
-    - 列式存储：只读取需要的列，I/O效率高
-    - 高压缩比：通常比CSV小5-10倍
-    - 支持谓词下推：可在读取时过滤数据
-    - 支持分区：按日期/股票代码分区
+    Parquet優勢：
+    - 列式存儲：只讀取需要的列，I/O效率高
+    - 高壓縮比：通常比CSV小5-10倍
+    - 支持謂詞下推：可在讀取時過濾數據
+    - 支持分區：按日期/股票代碼分區
     
-    适用场景：历史日线数据、分钟数据、特征数据
+    適用場景：歷史日線數據、分鐘數據、特徵數據
     """
     
     def __init__(self, base_dir: Path = PROCESSED_DATA_DIR):
         """
-        参数:
-            base_dir: 数据存储根目录
+        參數:
+            base_dir: 數據存儲根目錄
         """
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_path(self, key: str) -> Path:
-        """根据key生成文件路径"""
+        """根據key生成文件路徑"""
         return self.base_dir / f"{key}.parquet"
     
     def save(self, df: pd.DataFrame, key: str, 
              compression: str = 'snappy') -> None:
         """
-        保存DataFrame为Parquet格式
+        保存DataFrame為Parquet格式
         
-        参数:
-            df: 要保存的数据
-            key: 数据标识
-            compression: 压缩算法 ('snappy', 'gzip', 'brotli', 'zstd')
-                        snappy速度快，gzip压缩率高
+        參數:
+            df: 要保存的數據
+            key: 數據標識
+            compression: 壓縮算法 ('snappy', 'gzip', 'brotli', 'zstd')
+                        snappy速度快，gzip壓縮率高
         """
         path = self._get_path(key)
         df.to_parquet(path, compression=compression, index=True)
@@ -146,27 +130,27 @@ class ParquetStorage(DataStorage):
              start_date: Optional[str] = None,
              end_date: Optional[str] = None) -> pd.DataFrame:
         """
-        加载Parquet数据
+        加載Parquet數據
         
-        支持列选择和日期过滤，减少不必要的I/O。
+        支持列選擇和日期過濾，減少不必要的I/O。
         
-        参数:
-            key: 数据标识
-            columns: 要加载的列名列表（None加载全部）
-            start_date: 起始日期过滤
-            end_date: 结束日期过滤
+        參數:
+            key: 數據標識
+            columns: 要加載的列名列表（None加載全部）
+            start_date: 起始日期過濾
+            end_date: 結束日期過濾
         
         返回:
-            加载的DataFrame
+            加載的DataFrame
         """
         path = self._get_path(key)
         
         if not path.exists():
-            raise DataError(f"数据不存在: {key}", {'path': str(path)})
+            raise DataError(f"數據不存在: {key}", {'path': str(path)})
         
         df = pd.read_parquet(path, columns=columns)
         
-        # 日期范围过滤
+        # 日期範圍過濾
         if start_date or end_date:
             if isinstance(df.index, pd.DatetimeIndex):
                 if start_date:
@@ -183,33 +167,33 @@ class ParquetStorage(DataStorage):
         path = self._get_path(key)
         if path.exists():
             path.unlink()
-            logger.debug(f"已删除: {key}")
+            logger.debug(f"已刪除: {key}")
     
     def list_keys(self) -> List[str]:
         return [p.stem for p in self.base_dir.glob("*.parquet")]
 
 
 # ============================================================================
-# HDF5格式存储（适合高效批量读写）
+# HDF5格式存儲（適合高效批量讀寫）
 # ============================================================================
 class HDF5Storage(DataStorage):
     """
-    基于HDF5格式的数据存储
+    基於HDF5格式的數據存儲
     
-    HDF5优势：
-    - 适合存储大量结构化数据
-    - 支持分层存储（group/dataset）
-    - 单个文件存储多张表
-    - 压缩和分块读取
+    HDF5優勢：
+    - 適合存儲大量結構化數據
+    - 支持分層存儲（group/dataset）
+    - 單個文件存儲多張表
+    - 壓縮和分塊讀取
     
-    注意：HDF5跨平台兼容性不如Parquet，
-    在生产环境中建议使用Parquet。
+    注意：HDF5跨平臺兼容性不如Parquet，
+    在生產環境中建議使用Parquet。
     """
     
     def __init__(self, file_path: Path = PROCESSED_DATA_DIR / "market_data.h5"):
         """
-        参数:
-            file_path: HDF5文件路径
+        參數:
+            file_path: HDF5文件路徑
         """
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,13 +202,13 @@ class HDF5Storage(DataStorage):
         """
         保存DataFrame到HDF5文件
         
-        使用'table'格式以支持查询，'fixed'格式更快但不支持查询。
+        使用'table'格式以支持查詢，'fixed'格式更快但不支持查詢。
         """
         df.to_hdf(
             self.file_path, key=key,
             mode='a',           # 追加模式
-            format='table',     # 支持条件查询
-            complib='blosc',    # 使用blosc压缩（速度快）
+            format='table',     # 支持條件查詢
+            complib='blosc',    # 使用blosc壓縮（速度快）
             complevel=5
         )
         logger.debug(f"已保存 {key} → {self.file_path} ({len(df)} 行)")
@@ -233,15 +217,15 @@ class HDF5Storage(DataStorage):
              where: Optional[str] = None,
              columns: Optional[List[str]] = None) -> pd.DataFrame:
         """
-        从HDF5加载数据
+        從HDF5加載數據
         
-        参数:
-            key: 数据集键名
-            where: PyTables查询条件（如 'date > "2023-01-01"'）
-            columns: 要加载的列名
+        參數:
+            key: 數據集鍵名
+            where: PyTables查詢條件（如 'date > "2023-01-01"'）
+            columns: 要加載的列名
         
         返回:
-            加载的DataFrame
+            加載的DataFrame
         """
         try:
             df = pd.read_hdf(
@@ -250,7 +234,7 @@ class HDF5Storage(DataStorage):
             )
             return df
         except KeyError:
-            raise DataError(f"数据集不存在: {key}", {'file': str(self.file_path)})
+            raise DataError(f"數據集不存在: {key}", {'file': str(self.file_path)})
     
     def exists(self, key: str) -> bool:
         try:
@@ -263,7 +247,7 @@ class HDF5Storage(DataStorage):
         with pd.HDFStore(self.file_path, mode='a') as store:
             if key in store:
                 del store[key]
-                logger.debug(f"已删除数据集: {key}")
+                logger.debug(f"已刪除數據集: {key}")
     
     def list_keys(self) -> List[str]:
         try:
@@ -274,16 +258,16 @@ class HDF5Storage(DataStorage):
 
 
 # ============================================================================
-# 原始数据存储（不可变）
+# 原始數據存儲（不可變）
 # ============================================================================
 class RawDataStore:
     """
-    原始数据存储管理器
+    原始數據存儲管理器
     
-    设计原则：
-    - 原始数据一旦写入，永不修改（immutable）
-    - 每次爬取的数据带版本标记
-    - 提供数据完整性校验
+    設計原則：
+    - 原始數據一旦寫入，永不修改（immutable）
+    - 每次爬取的數據帶版本標記
+    - 提供數據完整性校驗
     """
     
     def __init__(self, base_dir: Path = RAW_DATA_DIR):
@@ -294,31 +278,31 @@ class RawDataStore:
     def save_raw(self, df: pd.DataFrame, ticker: str, 
                  version: Optional[str] = None) -> str:
         """
-        保存原始数据
+        保存原始數據
         
-        参数:
-            df: 原始OHLCV数据
-            ticker: 股票代码
-            version: 版本标识（None则自动生成时间戳版本）
+        參數:
+            df: 原始OHLCV數據
+            ticker: 股票代碼
+            version: 版本標識（None則自動生成時間戳版本）
         
         返回:
-            存储的key
+            存儲的key
         """
         if version is None:
             version = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
         
         key = f"{ticker}_daily_v{version}"
         self.parquet_store.save(df, key)
-        logger.info(f"原始数据已存档: {key}")
+        logger.info(f"原始數據已存檔: {key}")
         return key
     
     def load_raw(self, ticker: str, version: Optional[str] = None) -> pd.DataFrame:
         """
-        加载原始数据
+        加載原始數據
         
-        参数:
-            ticker: 股票代码
-            version: 版本标识（None则加载最新版本）
+        參數:
+            ticker: 股票代碼
+            version: 版本標識（None則加載最新版本）
         
         返回:
             原始DataFrame
@@ -327,26 +311,26 @@ class RawDataStore:
             key = f"{ticker}_daily_v{version}"
             return self.parquet_store.load(key)
         
-        # 加载最新版本
+        # 加載最新版本
         all_keys = self.parquet_store.list_keys()
         matching = [k for k in all_keys if k.startswith(f"{ticker}_daily_v")]
         
         if not matching:
-            raise DataError(f"未找到 {ticker} 的原始数据")
+            raise DataError(f"未找到 {ticker} 的原始數據")
         
-        # 按版本号排序，取最新
+        # 按版本號排序，取最新
         latest_key = sorted(matching, reverse=True)[0]
         return self.parquet_store.load(latest_key)
 
 
 # ============================================================================
-# 模型存储
+# 模型存儲
 # ============================================================================
 class ModelStorage:
     """
-    ML模型持久化存储
+    ML模型持久化存儲
     
-    支持PyTorch模型和scikit-learn模型的保存和加载。
+    支持PyTorch模型和scikit-learn模型的保存和加載。
     """
     
     def __init__(self, base_dir: Path = MODELS_DIR):
@@ -358,15 +342,15 @@ class ModelStorage:
         """
         保存PyTorch模型
         
-        同时保存模型状态字典和训练元数据。
+        同時保存模型狀態字典和訓練元數據。
         
-        参数:
-            model: PyTorch模型对象
-            name: 模型名称
-            metadata: 训练元数据（超参数、精度等）
+        參數:
+            model: PyTorch模型對象
+            name: 模型名稱
+            metadata: 訓練元數據（超參數、精度等）
         
         返回:
-            模型文件路径
+            模型文件路徑
         """
         import torch
         
@@ -384,14 +368,14 @@ class ModelStorage:
     
     def load_torch_model(self, model_class, name: str) -> tuple:
         """
-        加载PyTorch模型
+        加載PyTorch模型
         
-        参数:
-            model_class: 模型类（用于实例化）
-            name: 模型名称
+        參數:
+            model_class: 模型類（用於實例化）
+            name: 模型名稱
         
         返回:
-            (model, metadata) 元组
+            (model, metadata) 元組
         """
         import torch
         
@@ -401,26 +385,26 @@ class ModelStorage:
         
         checkpoint = torch.load(path, map_location='cpu', weights_only=False)
         
-        # 从元数据中重建模型配置
+        # 從元數據中重建模型配置
         metadata = checkpoint.get('metadata', {})
         
-        # 实例化模型并加载权重
+        # 實例化模型並加載權重
         model = model_class(**metadata.get('model_params', {}))
         model.load_state_dict(checkpoint['model_state_dict'])
         
-        logger.info(f"模型已加载: {path}")
+        logger.info(f"模型已加載: {path}")
         return model, metadata
     
     def save_sklearn_model(self, model, name: str) -> Path:
         """
-        保存scikit-learn模型（用于标准化器等预处理对象）
+        保存scikit-learn模型（用於標準化器等預處理對象）
         
-        参数:
-            model: sklearn模型对象
-            name: 模型名称
+        參數:
+            model: sklearn模型對象
+            name: 模型名稱
         
         返回:
-            文件路径
+            文件路徑
         """
         path = self.base_dir / f"{name}.pkl"
         with open(path, 'wb') as f:
@@ -429,13 +413,13 @@ class ModelStorage:
     
     def load_sklearn_model(self, name: str):
         """
-        加载scikit-learn模型
+        加載scikit-learn模型
         
-        参数:
-            name: 模型名称
+        參數:
+            name: 模型名稱
         
         返回:
-            模型对象
+            模型對象
         """
         path = self.base_dir / f"{name}.pkl"
         if not path.exists():

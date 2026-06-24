@@ -1,13 +1,13 @@
-# 系统架构文档
+# 系統架構文檔
 
-## 1. 总体架构
+## 1. 總體架構
 
 ```
                           ┌──────────────────────┐
-                          │   浏览器 (Dashboard)   │
+                          │   瀏覽器 (Dashboard)   │
                           │   localhost:8080       │
                           └──────────┬───────────┘
-                                     │ HTTP/轮询 1s
+                                     │ HTTP/輪詢 1s
                           ┌──────────▼───────────┐
                           │   Flask Web Server     │
                           │   (threaded=True)      │
@@ -17,105 +17,105 @@
               │                      │                      │
      ┌────────▼────────┐   ┌────────▼────────┐   ┌────────▼────────┐
      │   tick_engine()  │   │   REST API      │   │  state_persist  │
-     │   (后台线程)      │   │   (8个端点)      │   │  (每分钟)        │
-     │   每秒1次循环      │   │                 │   │                 │
+     │   (後臺線程)      │   │   (8個端點)      │   │  (每分鐘)        │
+     │   每秒1次循環      │   │                 │   │                 │
      └────────┬────────┘   └────────────────┘   └────────────────┘
               │
     ┌─────────┼─────────────────────────────────────────┐
-    │         │         数据流 (每tick)                   │
+    │         │         數據流 (每tick)                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ 价格获取      │  Yahoo Finance v7 API            │
-    │  │ fetch_yahoo  │  → 40只股票 + ^IXIC               │
+    │  │ 價格獲取      │  Yahoo Finance v7 API            │
+    │  │ fetch_yahoo  │  → 40隻股票 + ^IXIC               │
     │  └──────┬──────┘                                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ 持仓更新      │  Portfolio.update_prices()        │
-    │  │ 市值/PnL     │  → 每只持仓的浮动盈亏              │
+    │  │ 持倉更新      │  Portfolio.update_prices()        │
+    │  │ 市值/PnL     │  → 每隻持倉的浮動盈虧              │
     │  └──────┬──────┘                                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ ML预测       │  StockTransformer 推理            │
-    │  │ + 统计预测   │  RealtimePredictor fallback       │
+    │  │ ML預測       │  StockTransformer 推理            │
+    │  │ + 統計預測   │  RealtimePredictor fallback       │
     │  └──────┬──────┘                                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ 杠杆计算      │  Kelly × 波动率 × 绩效 × 热度     │
+    │  │ 槓桿計算      │  Kelly × 波動率 × 績效 × 熱度     │
     │  │ LeverageEngine│ → 0.25x ~ 2.0x                   │
     │  └──────┬──────┘                                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ 交易决策      │  止盈/止损/预测卖出/时间平仓      │
+    │  │ 交易決策      │  止盈/止損/預測賣出/時間平倉      │
     │  │ tick_engine  │  → execute_buy/execute_sell       │
     │  └──────┬──────┘                                   │
     │         ▼                                          │
     │  ┌─────────────┐                                   │
-    │  │ 基准更新      │  Benchmark.update()               │
-    │  │ Benchmark    │  → 纳指权益曲线 + 策略曲线          │
+    │  │ 基準更新      │  Benchmark.update()               │
+    │  │ Benchmark    │  → 納指權益曲線 + 策略曲線          │
     │  └─────────────┘                                   │
     └────────────────────────────────────────────────────┘
 ```
 
-## 2. 核心模块详解
+## 2. 核心模塊詳解
 
-### 2.1 web_server.py — 主控模块 (1326行)
+### 2.1 web_server.py — 主控模塊 (1326行)
 
-**职责**: Flask 服务器 + 交易引擎 + 全局状态管理
+**職責**: Flask 伺服器 + 交易引擎 + 全局狀態管理
 
-**关键全局变量**:
-| 变量 | 类型 | 说明 |
+**關鍵全局變量**:
+| 變量 | 類型 | 說明 |
 |------|------|------|
-| `_current_prices` | dict | 40+1只股票最新价格 |
-| `_previous_prices` | dict | 前次价格（波动率计算） |
-| `_iteration_count` | int | 引擎迭代计数 |
-| `_portfolio` | PortfolioManager | 持仓管理器 |
-| `_predictor` | RealtimePredictor | 统计预测器 |
-| `_benchmark` | BenchmarkTracker | 基准对比 |
-| `_leverage_engine` | LeverageEngine | 动态杠杆 |
+| `_current_prices` | dict | 40+1隻股票最新價格 |
+| `_previous_prices` | dict | 前次價格（波動率計算） |
+| `_iteration_count` | int | 引擎迭代計數 |
+| `_portfolio` | PortfolioManager | 持倉管理器 |
+| `_predictor` | RealtimePredictor | 統計預測器 |
+| `_benchmark` | BenchmarkTracker | 基準對比 |
+| `_leverage_engine` | LeverageEngine | 動態槓桿 |
 | `_ml_inference` | ModelInference | ML模型推理 |
-| `_ml_ready` | bool | ML模型是否就绪 |
+| `_ml_ready` | bool | ML模型是否就緒 |
 
-**数据流**:
+**數據流**:
 ```
-tick_engine() 每秒执行:
-  1. fetch_yahoo_prices()     → 获取实时价格
-  2. Portfolio.update_prices() → 更新持仓市值
-  3. Predictor.update_price()  → 更新统计特征
-  4. Benchmark.update()        → 更新基准曲线
-  5. 交易门控检查             → is_trading_session?
-  6. 价格过期检查             → _price_is_stale?
-  7. 交易信号生成             → 止盈/止损/预测卖出
+tick_engine() 每秒執行:
+  1. fetch_yahoo_prices()     → 獲取實時價格
+  2. Portfolio.update_prices() → 更新持倉市值
+  3. Predictor.update_price()  → 更新統計特徵
+  4. Benchmark.update()        → 更新基準曲線
+  5. 交易門控檢查             → is_trading_session?
+  6. 價格過期檢查             → _price_is_stale?
+  7. 交易信號生成             → 止盈/止損/預測賣出
   8. 每60秒 save_state()      → 持久化
 ```
 
-**REST API 端点** (详见 [API_REFERENCE.md](API_REFERENCE.md)):
-| 端点 | 方法 | 说明 |
+**REST API 端點** (詳見 [API_REFERENCE.md](API_REFERENCE.md)):
+| 端點 | 方法 | 說明 |
 |------|------|------|
-| `/` | GET | 仪表盘HTML |
-| `/api/health` | GET | 健康检查 |
-| `/api/status` | GET | 完整系统状态 |
-| `/api/tickers` | GET | 追踪股票列表 |
+| `/` | GET | 儀錶盤HTML |
+| `/api/health` | GET | 健康檢查 |
+| `/api/status` | GET | 完整系統狀態 |
+| `/api/tickers` | GET | 追蹤股票列表 |
 | `/api/signals` | GET | 交易指令 |
-| `/api/kline/<ticker>` | GET | 单只K线数据 |
-| `/api/kline/multi` | GET | 批量K线数据 |
-| `/api/benchmark_curve` | GET | 基准曲线数据 |
-| `/api/backtest_summary` | GET | 回测摘要 |
+| `/api/kline/<ticker>` | GET | 單只K線數據 |
+| `/api/kline/multi` | GET | 批量K線數據 |
+| `/api/benchmark_curve` | GET | 基準曲線數據 |
+| `/api/backtest_summary` | GET | 回測摘要 |
 
-### 2.2 portfolio.py — 持仓管理 (581行)
+### 2.2 portfolio.py — 持倉管理 (581行)
 
-**核心类**: `PortfolioManager`, `HoldingPosition`, `TradeRecord`
+**核心類**: `PortfolioManager`, `HoldingPosition`, `TradeRecord`
 
-**关键方法**:
-- `execute_buy(ticker, qty, price)` — 执行买入
-- `execute_sell(ticker, qty, price)` — 执行卖出
-- `execute_short(ticker, qty, price)` — 执行做空
-- `update_prices(prices_dict)` — 批量更新持仓价格
+**關鍵方法**:
+- `execute_buy(ticker, qty, price)` — 執行買入
+- `execute_sell(ticker, qty, price)` — 執行賣出
+- `execute_short(ticker, qty, price)` — 執行做空
+- `update_prices(prices_dict)` — 批量更新持倉價格
 - `get_total_equity()` → cash + MV - borrowed
 - `get_leverage_ratio()` → (MV + borrowed) / equity
 - `get_margin_ratio()` → equity / (MV + borrowed)
-- `accrue_interest()` — 每日利息计提
+- `accrue_interest()` — 每日利息計提
 
-**P&L计算**:
+**P&L計算**:
 ```
 unrealized_pnl = quantity × (current_price - avg_cost)
 unrealized_pnl_pct = (current_price / avg_cost - 1) × side_sign
@@ -123,29 +123,29 @@ realized_pnl = Σ(sell_price - buy_price) × quantity - commission
 day_pnl = current_equity - day_start_equity
 ```
 
-### 2.3 predictor.py — 统计预测引擎 (446行)
+### 2.3 predictor.py — 統計預測引擎 (446行)
 
-**核心类**: `RealtimePredictor`
+**核心類**: `RealtimePredictor`
 
-**预测因子** (7个技术指标):
-1. **动量** — 5/10/20周期价格变化率
-2. **均值回归** — 价格偏离MA的程度
-3. **成交量信号** — 量价背离检测
-4. **波动率** — 短期 vs 长期波动率比值
-5. **趋势强度** — 线性回归斜率 + R²
-6. **RSI** — 超买超卖判断
-7. **MACD** — 金叉死叉信号
+**預測因子** (7個技術指標):
+1. **動量** — 5/10/20周期價格變化率
+2. **均值回歸** — 價格偏離MA的程度
+3. **成交量信號** — 量價背離檢測
+4. **波動率** — 短期 vs 長期波動率比值
+5. **趨勢強度** — 線性回歸斜率 + R²
+6. **RSI** — 超買超賣判斷
+7. **MACD** — 金叉死叉信號
 
-**综合评分**:
+**綜合評分**:
 ```
 score = Σ(factor_i × weight_i)  →  [-1, +1]
 direction = 1 if score > 0 else -1
 confidence = 0.5 + |score| × 0.5
 ```
 
-详见 [ALGORITHMS.md](ALGORITHMS.md)。
+詳見 [ALGORITHMS.md](ALGORITHMS.md)。
 
-### 2.4 leverage_engine.py — 动态杠杆 (410行)
+### 2.4 leverage_engine.py — 動態槓桿 (410行)
 
 **多因子模型**:
 ```
@@ -154,122 +154,122 @@ leverage = clamp(leverage, MIN_LEVERAGE, MAX_LEVERAGE)
 leverage = min(leverage, DrawdownCap, MarginCap)
 ```
 
-**四个因子**:
-| 因子 | 方法 | 范围 |
+**四個因子**:
+| 因子 | 方法 | 範圍 |
 |------|------|------|
-| Kelly基础 | `_kelly_fraction()` | 0.0 ~ 2.0x |
-| 波动率调节 | `_volatility_multiplier()` | 0.5 ~ 1.5x |
-| 绩效反馈 | `_performance_multiplier()` | 0.4 ~ 1.3x |
-| 组合热度 | `_portfolio_heat_multiplier()` | 0.6 ~ 1.0x |
+| Kelly基礎 | `_kelly_fraction()` | 0.0 ~ 2.0x |
+| 波動率調節 | `_volatility_multiplier()` | 0.5 ~ 1.5x |
+| 績效反饋 | `_performance_multiplier()` | 0.4 ~ 1.3x |
+| 組合熱度 | `_portfolio_heat_multiplier()` | 0.6 ~ 1.0x |
 
-**反马丁格尔规则**:
-- 胜率 > 60% → 加码 (最多+30%)
-- 胜率 < 45% → 减仓 (最多-60%)
-- 3连败 → 强制上限 0.5x
+**反馬丁格爾規則**:
+- 勝率 > 60% → 加碼 (最多+30%)
+- 勝率 < 45% → 減倉 (最多-60%)
+- 3連敗 → 強制上限 0.5x
 
-### 2.5 benchmark.py — 基准对比 (409行)
+### 2.5 benchmark.py — 基準對比 (409行)
 
-**核心类**: `BenchmarkTracker`
+**核心類**: `BenchmarkTracker`
 
-**追踪指标**:
-- 纳指权益曲线 vs 策略权益曲线
-- 累计收益率、年化收益率
+**追蹤指標**:
+- 納指權益曲線 vs 策略權益曲線
+- 累計收益率、年化收益率
 - 夏普比率、最大回撤
 - Alpha、Beta、信息比率
-- 超额收益
+- 超額收益
 
-**数据流**:
+**數據流**:
 ```
-启动时: fetch_nasdaq_history('6mo') → 纳指历史数据
-运行时: update(nasdaq_price, strategy_equity) → 每分钟追加
-读取时: _ensure_curves_synced() → dict → Series 同步
-API:    /api/benchmark_curve → 最近300个数据点
+啟動時: fetch_nasdaq_history('6mo') → 納指歷史數據
+運行時: update(nasdaq_price, strategy_equity) → 每分鐘追加
+讀取時: _ensure_curves_synced() → dict → Series 同步
+API:    /api/benchmark_curve → 最近300個數據點
 ```
 
-### 2.6 market_clock.py — 市场时钟 (461行)
+### 2.6 market_clock.py — 市場時鐘 (461行)
 
-**市场状态枚举**:
+**市場狀態枚舉**:
 - `CLOSED` — 休市 (20:00-04:00 ET)
-- `PRE_MARKET` — 盘前 (04:00-09:30 ET)
+- `PRE_MARKET` — 盤前 (04:00-09:30 ET)
 - `REGULAR_HOURS` — 正常交易 (09:30-16:00 ET)
-- `AFTER_HOURS` — 盘后 (16:00-20:00 ET)
-- `EARLY_CLOSE` — 早收盘 (如Black Friday 13:00)
+- `AFTER_HOURS` — 盤後 (16:00-20:00 ET)
+- `EARLY_CLOSE` — 早收盤 (如Black Friday 13:00)
 
 **假期支持**: 2025-2027年完整美股假期列表
 
-### 2.7 state_persistence.py — 状态持久化 (399行)
+### 2.7 state_persistence.py — 狀態持久化 (399行)
 
-**保存内容**:
+**保存內容**:
 ```json
 {
-  "saved_at": "时间戳",
-  "portfolio": {持仓、现金、PnL、杠杆、交易历史},
-  "accuracy": {预测准确率统计},
-  "benchmark": {纳指曲线、回撤、收益率},
-  "globals": {价格、迭代计数、建仓状态等},
-  "predictor": {统计预测器状态}
+  "saved_at": "時間戳",
+  "portfolio": {持倉、現金、PnL、槓桿、交易歷史},
+  "accuracy": {預測準確率統計},
+  "benchmark": {納指曲線、回撤、收益率},
+  "globals": {價格、迭代計數、建倉狀態等},
+  "predictor": {統計預測器狀態}
 }
 ```
 
-**保存策略**: 每60秒自动保存 + 进程退出时保存
+**保存策略**: 每60秒自動保存 + 進程退出時保存
 
 ### 2.8 model_inference.py — ML推理
 
-**职责**: 加载 StockTransformer checkpoint，执行推理
+**職責**: 加載 StockTransformer checkpoint，執行推理
 
-**处理流程**:
-1. 加载最新 checkpoint (`.pt` 文件)
-2. 构建特征向量 (28 特征 + 4 情感特征)
-3. 前向传播 → 方向预测 + 置信度
-4. 过滤策略: 特征数不匹配时只保留交集
+**處理流程**:
+1. 加載最新 checkpoint (`.pt` 文件)
+2. 構建特徵向量 (28 特徵 + 4 情感特徵)
+3. 前向傳播 → 方向預測 + 置信度
+4. 過濾策略: 特徵數不匹配時只保留交集
 
 ### 2.9 前端 dashboard.html (646行)
 
-**5个面板**:
-| Tab | ID | 内容 |
+**5個面板**:
+| Tab | ID | 內容 |
 |-----|-----|------|
-| 📊 总览 | panel-positions | 持仓列表 + 最近交易 + 系统状态 |
-| 📈 K线图 | panel-charts | 40只股票的K线图 (Lightweight Charts) |
-| 📉 分析 | panel-analysis | 策略vs纳指曲线 + 收益统计 |
-| 🧠 模型 | panel-model | AI模型信息 + 辅助数据源 |
-| 📋 交易 | panel-trades | 完整交易记录 |
+| 📊 總覽 | panel-positions | 持倉列表 + 最近交易 + 系統狀態 |
+| 📈 K線圖 | panel-charts | 40隻股票的K線圖 (Lightweight Charts) |
+| 📉 分析 | panel-analysis | 策略vs納指曲線 + 收益統計 |
+| 🧠 模型 | panel-model | AI模型信息 + 輔助數據源 |
+| 📋 交易 | panel-trades | 完整交易記錄 |
 
-**技术细节**:
-- 1秒轮询 `/api/status` 获取实时数据
-- LightweightCharts 4.1.3 渲染K线和曲线
-- `safeResize()` 处理面板切换时的图表尺寸恢复
-- 30次重试机制处理容器0宽度问题
+**技術細節**:
+- 1秒輪詢 `/api/status` 獲取實時數據
+- LightweightCharts 4.1.3 渲染K線和曲線
+- `safeResize()` 處理面板切換時的圖表尺寸恢復
+- 30次重試機制處理容器0寬度問題
 
-## 3. 线程模型
+## 3. 線程模型
 
 ```
-主线程 (Flask)
-  ├── HTTP请求处理 (threaded=True, 多线程)
+主線程 (Flask)
+  ├── HTTP請求處理 (threaded=True, 多線程)
   │   ├── GET /api/status      → build_status_data()
   │   ├── GET /api/kline/*     → fetch_kline_data()
-  │   └── GET /api/benchmark_curve → _benchmark数据
+  │   └── GET /api/benchmark_curve → _benchmark數據
   │
   └── engine_thread (daemon)
       └── engine_loop()
           └── while _engine_running:
-              ├── tick_engine()        # 价格 + 交易 + 基准
-              ├── trigger_offline_training()  # 休市时训练
-              └── save_state()         # 状态持久化
+              ├── tick_engine()        # 價格 + 交易 + 基準
+              ├── trigger_offline_training()  # 休市時訓練
+              └── save_state()         # 狀態持久化
               └── time.sleep(1)
 ```
 
-**线程安全**: CPython GIL 保护单个操作，但迭代中修改 dict 可能导致 RuntimeError。当前依赖轮询的原子性，未加锁。
+**線程安全**: CPython GIL 保護單個操作，但迭代中修改 dict 可能導致 RuntimeError。當前依賴輪詢的原子性，未加鎖。
 
-## 4. 数据存储
+## 4. 數據存儲
 
-| 路径 | 格式 | 内容 |
+| 路徑 | 格式 | 內容 |
 |------|------|------|
-| `data/trading_state.json` | JSON | 完整运行时状态 |
-| `models/*.pt` | PyTorch | 训练好的模型权重 |
-| `data/processed/*.parquet` | Parquet | 处理后的训练数据 |
-| `logs/*.log` | 文本 | 运行日志 |
-| `work_logs/*.md` | Markdown | 工作日志 |
+| `data/trading_state.json` | JSON | 完整運行時狀態 |
+| `models/*.pt` | PyTorch | 訓練好的模型權重 |
+| `data/processed/*.parquet` | Parquet | 處理後的訓練數據 |
+| `logs/*.log` | 文本 | 運行日誌 |
+| `work_logs/*.md` | Markdown | 工作日誌 |
 
 ---
 
-> 📖 **下一步**: 阅读 [ALGORITHMS.md](ALGORITHMS.md) 了解算法细节
+> 📖 **下一步**: 閱讀 [ALGORITHMS.md](ALGORITHMS.md) 了解算法細節

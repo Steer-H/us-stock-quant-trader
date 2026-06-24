@@ -1,21 +1,4 @@
-"""
-美股量化交易系统 - ML模型数据加载模块
-
-负责将清洗后的行情数据转换为PyTorch模型可用的训练数据，
-包括：
-- 时间序列窗口切片
-- 特征标准化/归一化
-- 训练/验证/测试集划分
-- DataLoader创建
-
-数据流：
-原始行情数据 → 技术指标计算 → 窗口切片 → 标准化 → DataLoader → 模型训练
-
-关键设计：
-- 时序划分：严格按时间顺序划分（不能随机shuffle），防止未来信息泄露
-- 窗口重叠：支持滑动窗口重叠，增加样本量
-- 多股票联合：支持多只股票的数据混合训练
-"""
+"""Data loader for training the Transformer model."""
 
 import logging
 from typing import Optional, List, Tuple
@@ -34,31 +17,31 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 时间序列数据集
+# 時間序列數據集
 # ============================================================================
 class TimeSeriesDataset(Dataset):
     """
-    PyTorch时间序列数据集
+    PyTorch時間序列數據集
     
-    从历史价格数据中生成 (输入窗口, 未来收益率) 的监督学习样本。
+    從歷史價格數據中生成 (輸入窗口, 未來收益率) 的監督學習樣本。
     
-    样本生成逻辑：
-    对于长度为T的时间序列，使用大小为W的滑动窗口：
-    - 输入X: [t-W, t-W+1, ..., t-1] 的特征（W天，n_features维）
-    - 标签y: [t, t+1, ..., t+H-1] 的收益率（H天）
+    樣本生成邏輯：
+    對於長度為T的時間序列，使用大小為W的滑動窗口：
+    - 輸入X: [t-W, t-W+1, ..., t-1] 的特徵（W天，n_features維）
+    - 標籤y: [t, t+1, ..., t+H-1] 的收益率（H天）
     
-    如果不重叠（stride=W），样本数为 floor(T / W) - 1
-    如果重叠（stride<S），样本数为 T - W - H + 1
+    如果不重疊（stride=W），樣本數為 floor(T / W) - 1
+    如果重疊（stride<S），樣本數為 T - W - H + 1
     
-    时间复杂度: O(n_samples * window * features) - 切片时
-    空间复杂度: O(n_samples * window * features) - 存储切片
+    時間複雜度: O(n_samples * window * features) - 切片時
+    空間複雜度: O(n_samples * window * features) - 存儲切片
     
-    参数:
-        df: 包含特征和技术指标的DataFrame
-        feature_cols: 要使用的特征列名列表
-        lookback_window: 输入窗口大小（天数）
-        prediction_horizon: 预测窗口大小（天数）
-        stride: 滑动窗口步长（1=最大重叠，window=无重叠）
+    參數:
+        df: 包含特徵和技術指標的DataFrame
+        feature_cols: 要使用的特徵列名列表
+        lookback_window: 輸入窗口大小（天數）
+        prediction_horizon: 預測窗口大小（天數）
+        stride: 滑動窗口步長（1=最大重疊，window=無重疊）
     """
     
     def __init__(
@@ -72,14 +55,14 @@ class TimeSeriesDataset(Dataset):
         fit_scaler: bool = True
     ):
         """
-        参数:
-            df: 包含特征列的DataFrame（索引为日期）
-            feature_cols: 特征列名列表
-            lookback_window: 历史窗口大小
-            prediction_horizon: 预测窗口大小
-            stride: 滑动步长
-            scaler: 预训练的scaler（为None时自动创建）
-            fit_scaler: 是否在此数据集上拟合scaler
+        參數:
+            df: 包含特徵列的DataFrame（索引為日期）
+            feature_cols: 特徵列名列表
+            lookback_window: 歷史窗口大小
+            prediction_horizon: 預測窗口大小
+            stride: 滑動步長
+            scaler: 預訓練的scaler（為None時自動創建）
+            fit_scaler: 是否在此數據集上擬合scaler
         """
         super().__init__()
         
@@ -87,26 +70,26 @@ class TimeSeriesDataset(Dataset):
         self.horizon = prediction_horizon
         self.feature_cols = feature_cols
         
-        # 1. 提取特征矩阵
-        # 确保所有特征列存在
+        # 1. 提取特徵矩陣
+        # 確保所有特徵列存在
         missing = set(feature_cols) - set(df.columns)
         if missing:
             raise DataError(
-                f"DataFrame缺少特征列: {missing}",
+                f"DataFrame缺少特徵列: {missing}",
                 {'missing': list(missing), 'available': list(df.columns)}
             )
         
-        # 丢弃含NaN的行（在序列开头由于滚动窗口计算产生）
+        # 丟棄含NaN的行（在序列開頭由於滾動窗口計算產生）
         self.data = df[feature_cols]
         self.data = self.data.dropna()
         
         if len(self.data) < lookback_window + prediction_horizon:
             raise DataError(
-                f"数据长度({len(self.data)})不足，需要至少{lookback_window + prediction_horizon}行",
+                f"數據長度({len(self.data)})不足，需要至少{lookback_window + prediction_horizon}行",
                 {'length': len(self.data), 'required': lookback_window + prediction_horizon}
             )
         
-        # 2. 特征标准化
+        # 2. 特徵標準化
         if scaler is None:
             scaler = StandardScaler()
         
@@ -117,33 +100,33 @@ class TimeSeriesDataset(Dataset):
         
         self.scaled_data = self.scaler.transform(self.data.values)
         
-        # 3. 提取目标变量（未来收益率）
-        # 这里假设 'target_1d' 和 'target_5d' 在最后一次 add_all_indicators 时已计算
-        # 注意：这些目标列不参与特征标准化
+        # 3. 提取目標變量（未來收益率）
+        # 這裡假設 'target_1d' 和 'target_5d' 在最後一次 add_all_indicators 時已計算
+        # 注意：這些目標列不參與特徵標準化
         self.returns = pd.DataFrame(index=self.data.index)
         
-        # 尝试从原始df中获取目标列
-        # 注意: 多股票合并后索引可能有重复，使用整数位置对齐
-        # 记录哪些行被保留（dropna后剩余的行）
+        # 嘗試從原始df中獲取目標列
+        # 注意: 多股票合併後索引可能有重複，使用整數位置對齊
+        # 記錄哪些行被保留（dropna後剩餘的行）
         keep_mask = df[feature_cols].notna().all(axis=1)
         for col in ['close', 'target_1d', 'target_5d', 'returns_1d', 'returns_5d']:
             if col in df.columns:
                 self.returns[col] = df.loc[keep_mask, col].values
         
         if 'target_1d' not in self.returns.columns and 'close' in self.returns.columns:
-            # 手动计算目标
+            # 手動計算目標
             self.returns['target_1d'] = self.returns['close'].pct_change().shift(-1)
         
         self.returns = self.returns.dropna()
         self.returns = self.returns.values
         
-        # 4. 计算样本数量
+        # 4. 計算樣本數量
         min_len = min(len(self.scaled_data), len(self.returns))
         self.stride = stride
         self.n_samples = max(0, (min_len - lookback_window - prediction_horizon) // stride + 1)
         
         logger.debug(
-            f"TimeSeriesDataset: {self.n_samples} 样本, "
+            f"TimeSeriesDataset: {self.n_samples} 樣本, "
             f"window={lookback_window}, horizon={prediction_horizon}, "
             f"features={len(feature_cols)}"
         )
@@ -153,37 +136,37 @@ class TimeSeriesDataset(Dataset):
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        获取单个训练样本
+        獲取單個訓練樣本
         
-        参数:
-            idx: 样本索引
+        參數:
+            idx: 樣本索引
         
         返回:
-            x: 输入特征 (lookback_window, n_features)
-            y_reg: 回归目标 (prediction_horizon,) - 未来收益率
-            y_cls: 分类目标 (prediction_horizon,) - 涨跌方向(0/1)
+            x: 輸入特徵 (lookback_window, n_features)
+            y_reg: 回歸目標 (prediction_horizon,) - 未來收益率
+            y_cls: 分類目標 (prediction_horizon,) - 漲跌方向(0/1)
         """
         start = idx * self.stride
         end = start + self.lookback
         
-        # 输入特征窗口
+        # 輸入特徵窗口
         x = torch.FloatTensor(self.scaled_data[start:end])
         
-        # 目标窗口
+        # 目標窗口
         target_start = end
         target_end = target_start + self.horizon
         
-        # 目标列取最后一列（对应 returns_{horizon}d，由 build_returns 保证列顺序）
+        # 目標列取最後一列（對應 returns_{horizon}d，由 build_returns 保證列順序）
         y_reg = torch.FloatTensor(self.returns[target_start:target_end, -1])
         
-        # 分类标签：收益率>0为1（涨），否则为0（跌）
+        # 分類標籤：收益率>0為1（漲），否則為0（跌）
         y_cls = (y_reg > 0).float()
         
         return x, y_reg, y_cls
 
 
 # ============================================================================
-# 数据准备函数
+# 數據準備函數
 # ============================================================================
 def prepare_data(
     tickers: Optional[List[str]] = None,
@@ -194,32 +177,32 @@ def prepare_data(
     random_state: int = 42
 ) -> Tuple[DataLoader, DataLoader, DataLoader, object]:
     """
-    准备训练/验证/测试数据
+    準備訓練/驗證/測試數據
     
-    将多只股票的加工数据合并，创建标准化的DataLoader。
+    將多隻股票的加工數據合併，創建標準化的DataLoader。
     
-    重要：时序数据不能随机shuffle训练集！
-    我们按时间顺序划分每个股票的数据，然后合并。
+    重要：時序數據不能隨機shuffle訓練集！
+    我們按時間順序劃分每個股票的數據，然後合併。
     
-    划分策略（时序感知）：
-    - 每只股票自己的数据按时间顺序划分为 train/val/test
-    - train: 前70%（最早的时间段）
-    - val: 中间15%
-    - test: 最后15%（最接近当前的时间段）
+    劃分策略（時序感知）：
+    - 每隻股票自己的數據按時間順序劃分為 train/val/test
+    - train: 前70%（最早的時間段）
+    - val: 中間15%
+    - test: 最後15%（最接近當前的時間段）
     
-    这种划分方式模拟了真实的交易场景：
-    用历史数据训练，用未来数据测试。
+    這種劃分方式模擬了真實的交易場景：
+    用歷史數據訓練，用未來數據測試。
     
-    时间复杂度: O(t*n)，t=股票数，n=平均每只股票的数据行数
-    空间复杂度: O(t*n)
+    時間複雜度: O(t*n)，t=股票數，n=平均每隻股票的數據行數
+    空間複雜度: O(t*n)
     
-    参数:
-        tickers: 股票代码列表（None则加载所有可用的特征数据）
+    參數:
+        tickers: 股票代碼列表（None則加載所有可用的特徵數據）
         config: 模型配置
-        data_dir: 加工数据目录
-        test_size: 测试集比例
-        val_size: 验证集比例
-        random_state: 随机种子
+        data_dir: 加工數據目錄
+        test_size: 測試集比例
+        val_size: 驗證集比例
+        random_state: 隨機種子
     
     返回:
         (train_loader, val_loader, test_loader, scaler)
@@ -229,7 +212,7 @@ def prepare_data(
     
     storage = ParquetStorage(data_dir)
     
-    # 1. 确定股票列表
+    # 1. 確定股票列表
     if tickers is None:
         available_keys = storage.list_keys()
         tickers = list(set(
@@ -239,11 +222,11 @@ def prepare_data(
         ))
     
     if not tickers:
-        raise DataError(f"在 {data_dir} 中未找到特征数据")
+        raise DataError(f"在 {data_dir} 中未找到特徵數據")
     
-    logger.info(f"准备数据: {len(tickers)} 只股票")
+    logger.info(f"準備數據: {len(tickers)} 只股票")
     
-    # 2. 加载并合并所有股票的数据
+    # 2. 加載並合併所有股票的數據
     all_train_features = []
     all_val_features = []
     all_test_features = []
@@ -255,10 +238,10 @@ def prepare_data(
             df = storage.load(f"{ticker}_features")
             
             if df is None or len(df) < config.lookback_window + config.prediction_horizon + 50:
-                logger.debug(f"跳过 {ticker}: 数据量不足 ({len(df) if df is not None else 0} 行)")
+                logger.debug(f"跳過 {ticker}: 數據量不足 ({len(df) if df is not None else 0} 行)")
                 continue
             
-            # 按时间顺序划分
+            # 按時間順序劃分
             n = len(df)
             train_end = int(n * (1 - val_size - test_size))
             val_end = int(n * (1 - test_size))
@@ -267,7 +250,7 @@ def prepare_data(
             val_df = df.iloc[train_end:val_end]
             test_df = df.iloc[val_end:]
             
-            # 收集特征数据用于拟合scaler（所有股票参与partial_fit）
+            # 收集特徵數據用於擬合scaler（所有股票參與partial_fit）
             if len(train_df) > 0:
                 train_features = train_df[config.features].dropna().values
                 if len(train_features) > 0:
@@ -278,27 +261,27 @@ def prepare_data(
             all_test_features.append(test_df)
             
         except Exception as e:
-            logger.warning(f"加载 {ticker} 数据失败: {e}")
+            logger.warning(f"加載 {ticker} 數據失敗: {e}")
             continue
     
     if not all_train_features:
-        raise DataError("没有可用的训练数据")
+        raise DataError("沒有可用的訓練數據")
     
-    # 3. 合并数据
+    # 3. 合併數據
     train_combined = pd.concat(all_train_features)
     val_combined = pd.concat(all_val_features) if all_val_features else pd.DataFrame()
     test_combined = pd.concat(all_test_features) if all_test_features else pd.DataFrame()
     
     logger.info(
-        f"数据划分: train={len(train_combined)}, "
+        f"數據劃分: train={len(train_combined)}, "
         f"val={len(val_combined)}, test={len(test_combined)}"
     )
     
-    # 4. 创建Dataset
+    # 4. 創建Dataset
     train_dataset = TimeSeriesDataset(
         train_combined, config.features,
         config.lookback_window, config.prediction_horizon,
-        scaler=scaler, fit_scaler=False  # 已经partial_fit了
+        scaler=scaler, fit_scaler=False  # 已經partial_fit了
     )
     
     val_dataset = TimeSeriesDataset(
@@ -313,15 +296,15 @@ def prepare_data(
         scaler=scaler, fit_scaler=False
     ) if not test_combined.empty else None
     
-    # 5. 创建DataLoader
-    # 注意：对于时序数据，shuffle=True会破坏时间依赖关系
-    # 但在训练集中轻微shuffle（batch级别）有助于随机梯度下降
+    # 5. 創建DataLoader
+    # 注意：對於時序數據，shuffle=True會破壞時間依賴關係
+    # 但在訓練集中輕微shuffle（batch級別）有助於隨機梯度下降
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
-        shuffle=True,  # 对训练集shuffle batch顺序
-        num_workers=0,  # 避免多进程问题
-        drop_last=True  # 丢弃最后不完整的batch
+        shuffle=True,  # 對訓練集shuffle batch順序
+        num_workers=0,  # 避免多進程問題
+        drop_last=True  # 丟棄最後不完整的batch
     )
     
     val_loader = DataLoader(
@@ -341,7 +324,7 @@ def prepare_data(
     ) if test_dataset is not None else None
     
     logger.info(
-        f"DataLoader已创建: "
+        f"DataLoader已創建: "
         f"train_batches={len(train_loader)}, "
         f"val_batches={len(val_loader) if val_loader else 0}, "
         f"test_batches={len(test_loader) if test_loader else 0}"
@@ -356,12 +339,12 @@ def load_single_ticker_data(
     data_dir: Path = PROCESSED_DATA_DIR
 ) -> Tuple[DataLoader, object, pd.DataFrame]:
     """
-    加载单只股票的数据用于预测
+    加載單只股票的數據用於預測
     
-    参数:
-        ticker: 股票代码
+    參數:
+        ticker: 股票代碼
         config: 模型配置
-        data_dir: 数据目录
+        data_dir: 數據目錄
     
     返回:
         (data_loader, scaler, original_df)
@@ -371,12 +354,12 @@ def load_single_ticker_data(
     try:
         df = storage.load(f"{ticker}_features")
     except Exception:
-        raise DataError(f"未找到 {ticker} 的特征数据")
+        raise DataError(f"未找到 {ticker} 的特徵數據")
     
     if len(df) < config.lookback_window:
-        raise DataError(f"{ticker} 数据量({len(df)})不足窗口大小({config.lookback_window})")
+        raise DataError(f"{ticker} 數據量({len(df)})不足窗口大小({config.lookback_window})")
     
-    # 创建scaler
+    # 創建scaler
     scaler = StandardScaler()
     features = df[config.features].dropna().values
     scaler.fit(features)

@@ -1,22 +1,4 @@
-"""
-RSS新闻抓取与情感分析模块
-
-从多个RSS源抓取美股新闻标题，进行轻量级情感分析。
-用于ML模型的辅助特征（小权重）。
-
-数据源：
-- Yahoo Finance RSS: 快速、财经专注
-- Google News RSS: 覆盖面广
-
-设计原则：
-- 轻量：仅依赖标准库 + yfinance
-- 可缓存：结果存 parquet
-- 可扩展：易于添加新RSS源
-
-使用示例：
-    scraper = NewsScraper()
-    results = scraper.fetch_ticker_news('AAPL', days=30)
-"""
+"""Financial news scraper."""
 
 import logging
 import re
@@ -43,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NewsItem:
-    """单条新闻"""
+    """單條新聞"""
     ticker: str
     date: date
     headline: str
@@ -54,9 +36,9 @@ class NewsItem:
 
 class NewsScraper:
     """
-    多源RSS新闻抓取器
+    多源RSS新聞抓取器
     
-    从多个RSS源抓取股票相关新闻，进行情感分析。
+    從多個RSS源抓取股票相關新聞，進行情感分析。
     """
     
     # RSS源配置
@@ -73,7 +55,7 @@ class NewsScraper:
     
     def _fetch_rss(self, url: str, source_name: str) -> List[Tuple[str, str]]:
         """
-        从RSS源抓取标题
+        從RSS源抓取標題
         
         返回: [(headline, pub_date_str), ...]
         """
@@ -85,10 +67,10 @@ class NewsScraper:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 content = resp.read().decode('utf-8', errors='replace')
         except urllib.error.URLError as e:
-            logger.debug(f"RSS {source_name} 抓取失败: {e}")
+            logger.debug(f"RSS {source_name} 抓取失敗: {e}")
             return []
         except Exception as e:
-            logger.debug(f"RSS {source_name} 解析失败: {e}")
+            logger.debug(f"RSS {source_name} 解析失敗: {e}")
             return []
         
         # 解析RSS XML
@@ -101,7 +83,7 @@ class NewsScraper:
             
             if title_match:
                 title = title_match.group(1).strip()
-                # 清理HTML实体
+                # 清理HTML實體
                 title = title.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
                 title = title.replace('&quot;', '"').replace('&#39;', "'")
                 title = title.replace('&apos;', "'")
@@ -109,7 +91,7 @@ class NewsScraper:
                 pub_date = date_match.group(1) if date_match else ''
                 results.append((title, pub_date))
         
-        logger.debug(f"RSS {source_name}: {len(results)} 条标题")
+        logger.debug(f"RSS {source_name}: {len(results)} 條標題")
         return results
     
     def _parse_rss_date(self, date_str: str) -> Optional[date]:
@@ -138,12 +120,12 @@ class NewsScraper:
         self, ticker: str, days: int = 7, sources: List[str] = None
     ) -> List[NewsItem]:
         """
-        抓取单只股票的新闻
+        抓取單只股票的新聞
         
-        参数:
-            ticker: 股票代码
-            days: 回溯天数
-            sources: RSS源列表（默认全部）
+        參數:
+            ticker: 股票代碼
+            days: 回溯天數
+            sources: RSS源列表（默認全部）
         
         返回:
             NewsItem列表
@@ -192,12 +174,12 @@ class NewsScraper:
                     is_earnings=is_earnings,
                 ))
             
-            # 避免请求过快
+            # 避免請求過快
             if len(sources) > 1:
                 time.sleep(0.5)
         
         logger.info(
-            f"{ticker}: 抓取 {len(all_items)} 条新闻 "
+            f"{ticker}: 抓取 {len(all_items)} 條新聞 "
             f"({len(sources)} 源, {days}天)"
         )
         return all_items
@@ -206,14 +188,14 @@ class NewsScraper:
         self, items: List[NewsItem]
     ) -> pd.DataFrame:
         """
-        将新闻列表聚合为每日情感DataFrame
+        將新聞列表聚合為每日情感DataFrame
         
         返回:
             DataFrame with columns:
-            - news_sentiment_daily: 当日平均情感得分
-            - news_count: 新闻数量
-            - positive_ratio: 正面新闻占比
-            - earnings_news_count: 财报新闻数
+            - news_sentiment_daily: 當日平均情感得分
+            - news_count: 新聞數量
+            - positive_ratio: 正面新聞佔比
+            - earnings_news_count: 財報新聞數
         """
         if not items:
             return pd.DataFrame()
@@ -247,11 +229,11 @@ class NewsScraper:
         self, tickers: List[str], lookback_days: int = 30
     ) -> pd.DataFrame:
         """
-        为多只股票构建新闻情感特征
+        為多隻股票構建新聞情感特徵
         
-        参数:
+        參數:
             tickers: 股票列表
-            lookback_days: 回溯天数
+            lookback_days: 回溯天數
         
         返回:
             MultiIndex DataFrame (date, ticker) with sentiment columns
@@ -271,12 +253,12 @@ class NewsScraper:
                 all_features.append(daily)
         
         if not all_features:
-            logger.warning("无新闻数据")
+            logger.warning("無新聞數據")
             return pd.DataFrame()
         
         result = pd.concat(all_features)
         logger.info(
-            f"新闻情感特征构建完成: {len(result)} 行"
+            f"新聞情感特徵構建完成: {len(result)} 行"
         )
         return result
     
@@ -284,16 +266,16 @@ class NewsScraper:
         self, df: pd.DataFrame, ticker: str
     ) -> pd.DataFrame:
         """
-        将抓取的新闻情感合并到现有特征DataFrame中
+        將抓取的新聞情感合併到現有特徵DataFrame中
         
-        只填充新闻相关列，不影响其他字段。
+        只填充新聞相關列，不影響其他欄位。
         
-        参数:
-            df: 现有特征DataFrame (单只股票, DatetimeIndex)
-            ticker: 股票代码
+        參數:
+            df: 現有特徵DataFrame (單只股票, DatetimeIndex)
+            ticker: 股票代碼
         
         返回:
-            更新后的DataFrame
+            更新後的DataFrame
         """
         news_items = self.fetch_ticker_news(ticker, days=90)
         if not news_items:
@@ -303,11 +285,11 @@ class NewsScraper:
         if daily.empty:
             return df
         
-        # 确保索引可比较
+        # 確保索引可比較
         if daily.index.tz is not None:
             daily.index = daily.index.tz_localize(None)
         
-        # 前向填充：新闻情绪影响持续数日
+        # 前向填充：新聞情緒影響持續數日
         daily['news_sentiment_3d'] = daily['news_sentiment_daily'].rolling(
             3, min_periods=1
         ).mean()
@@ -315,15 +297,15 @@ class NewsScraper:
             7, min_periods=1
         ).mean()
         
-        # 合并到df
+        # 合併到df
         for col in ['news_sentiment_3d', 'news_sentiment_7d']:
             if col in daily.columns:
                 common_idx = df.index.intersection(daily.index)
                 if len(common_idx) > 0:
                     df.loc[common_idx, col] = daily.loc[common_idx, col].values
         
-        # 对于没有新闻覆盖的日期，保持之前的代理值（如财报代理）
-        # 不做额外覆盖
+        # 對於沒有新聞覆蓋的日期，保持之前的代理值（如財報代理）
+        # 不做額外覆蓋
         
         return df
 
@@ -334,12 +316,12 @@ def scrape_recent_news_for_tickers(
     output_dir: Path = None
 ) -> pd.DataFrame:
     """
-    便捷函数：为股票列表抓取最近新闻情感
+    便捷函數：為股票列表抓取最近新聞情感
     
-    参数:
-        tickers: 股票代码列表
-        lookback_days: 回溯天数
-        output_dir: 输出目录
+    參數:
+        tickers: 股票代碼列表
+        lookback_days: 回溯天數
+        output_dir: 輸出目錄
     
     返回:
         MultiIndex DataFrame
@@ -358,14 +340,14 @@ def scrape_recent_news_for_tickers(
 
 
 if __name__ == '__main__':
-    # 快速测试
+    # 快速測試
     logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(message)s')
     
     scraper = NewsScraper()
     test_tickers = ['AAPL', 'NVDA', 'MSFT']
     
     print(f"\n{'='*60}")
-    print(f"测试新闻抓取: {test_tickers}")
+    print(f"測試新聞抓取: {test_tickers}")
     print(f"{'='*60}")
     
     for ticker in test_tickers:
@@ -373,11 +355,11 @@ if __name__ == '__main__':
         daily = scraper.aggregate_to_dataframe(items)
         if not daily.empty:
             avg_sent = daily['news_sentiment_daily'].mean()
-            print(f"\n{ticker}: {len(items)} 条新闻, 平均情感={avg_sent:.3f}")
-            print(f"  日期范围: {daily.index.min().date()} ~ {daily.index.max().date()}")
-            # 显示几条样例
+            print(f"\n{ticker}: {len(items)} 條新聞, 平均情感={avg_sent:.3f}")
+            print(f"  日期範圍: {daily.index.min().date()} ~ {daily.index.max().date()}")
+            # 顯示幾條樣例
             for item in items[:3]:
                 print(f"  [{item.sentiment_score:+.2f}] {item.headline[:80]}")
     
     print(f"\n{'='*60}")
-    print("测试完成")
+    print("測試完成")

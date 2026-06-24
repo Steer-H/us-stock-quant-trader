@@ -1,7 +1,7 @@
 #!/bin/bash
-# launchd 包装脚本 - 解决 macOS 安全权限问题
-# launchd 直接调用 python3 可能因沙箱限制无法读取脚本文件，
-# 通过 shell 包装可继承终端的完整文件访问权限。
+# launchd 包裝腳本 - 解決 macOS 安全權限問題
+# launchd 直接調用 python3 可能因沙箱限制無法讀取腳本文件，
+# 通過 shell 包裝可繼承終端的完整文件訪問權限。
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR" || exit 1

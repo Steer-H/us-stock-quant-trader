@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-构建新闻/财报情感特征并合并到每只股票的 features parquet 文件中。
+構建新聞/財報情感特徵並合併到每隻股票的 features parquet 文件中。
 
 策略:
-- 财报数据：从 yfinance 抓取历史 EPS 惊喜数据，合并到 parquet
-- 新闻情感：由于 yfinance 新闻仅返回最近几天的数据且与历史数据无交集，
-  使用财报惊喜值作为情感代理信号，通过前向填充传播
+- 財報數據：從 yfinance 抓取歷史 EPS 驚喜數據，合併到 parquet
+- 新聞情感：由於 yfinance 新聞僅返回最近幾天的數據且與歷史數據無交集，
+  使用財報驚喜值作為情感代理信號，通過前向填充傳播
 """
 import sys
 import time
@@ -30,26 +30,26 @@ from config.settings import PROCESSED_DATA_DIR
 
 def build_sentiment_for_ticker(ticker, df, analyzer):
     """
-    为单只股票构建情感特征并更新 DataFrame。
-    直接修改传入的 df。
+    為單只股票構建情感特徵並更新 DataFrame。
+    直接修改傳入的 df。
     """
     import yfinance as yf
 
-    # --- 财报数据 ---
+    # --- 財報數據 ---
     try:
         stock = yf.Ticker(ticker)
         earnings_dates = stock.earnings_dates
     except Exception as e:
-        logger.debug(f'{ticker}: yfinance 财报抓取失败: {e}')
+        logger.debug(f'{ticker}: yfinance 財報抓取失敗: {e}')
         earnings_dates = None
 
     if earnings_dates is not None and not earnings_dates.empty:
         ed = earnings_dates.copy()
-        # 归一化时区
+        # 歸一化時區
         if ed.index.tz is not None:
             ed.index = ed.index.tz_convert('America/New_York').normalize().tz_localize(None)
 
-        # 盈利惊喜百分比
+        # 盈利驚喜百分比
         if 'Surprise(%)' in ed.columns:
             ed['earnings_surprise_pct'] = ed['Surprise(%)'] / 100.0
         elif 'EPS Estimate' in ed.columns and 'Reported EPS' in ed.columns:
@@ -64,7 +64,7 @@ def build_sentiment_for_ticker(ticker, df, analyzer):
 
         ed['has_earnings_report'] = 1
 
-        # 合并到 df
+        # 合併到 df
         common_idx = df.index.intersection(ed.index)
         if len(common_idx) > 0:
             for col in ['earnings_surprise_pct', 'has_earnings_report']:
@@ -75,15 +75,15 @@ def build_sentiment_for_ticker(ticker, df, analyzer):
     else:
         earnings_count = 0
 
-    # --- 新闻情感代理 ---
-    # 由于 yfinance 新闻仅返回最近几天且与历史数据无交集，
-    # 使用财报惊喜值作为情感代理信号。
-    # 策略：财报日的惊喜值向前传播（市场需要数日消化财报信息）
+    # --- 新聞情感代理 ---
+    # 由於 yfinance 新聞僅返回最近幾天且與歷史數據無交集，
+    # 使用財報驚喜值作為情感代理信號。
+    # 策略：財報日的驚喜值向前傳播（市場需要數日消化財報信息）
     if 'earnings_surprise_pct' in df.columns:
-        # 在财报日，用惊喜值作为新闻情感
+        # 在財報日，用驚喜值作為新聞情感
         earn_mask = df['has_earnings_report'] > 0
         if earn_mask.any():
-            # 新闻情感代理：归一化到 -1 到 1 范围
+            # 新聞情感代理：歸一化到 -1 到 1 範圍
             surprise_vals = df.loc[earn_mask, 'earnings_surprise_pct'].values
             max_abs = np.nanmax(np.abs(surprise_vals))
             if np.isnan(max_abs) or max_abs < 1e-9:
@@ -93,7 +93,7 @@ def build_sentiment_for_ticker(ticker, df, analyzer):
             df.loc[earn_mask, 'news_sentiment_3d'] = sentiment_proxy
             df.loc[earn_mask, 'news_sentiment_7d'] = sentiment_proxy
 
-            # 前向填充：惊喜情绪影响持续数日
+            # 前向填充：驚喜情緒影響持續數日
             df['news_sentiment_3d'] = df['news_sentiment_3d'].replace(0, np.nan)
             df['news_sentiment_3d'] = df['news_sentiment_3d'].ffill(limit=3).fillna(0)
 
@@ -111,7 +111,7 @@ def main():
         for k in available
         if k.endswith('_features')
     ])
-    logger.info(f'找到 {len(tickers)} 只股票的特征文件')
+    logger.info(f'找到 {len(tickers)} 只股票的特徵文件')
 
     success = 0
     failed = 0
@@ -119,12 +119,12 @@ def main():
 
     for i, ticker in enumerate(tickers):
         t0 = time.perf_counter()
-        logger.info(f'[{i+1}/{len(tickers)}] 处理 {ticker}...')
+        logger.info(f'[{i+1}/{len(tickers)}] 處理 {ticker}...')
 
         try:
             df = storage.load(f'{ticker}_features')
             if df is None or len(df) == 0:
-                logger.warning(f'  {ticker}: 数据为空，跳过')
+                logger.warning(f'  {ticker}: 數據為空，跳過')
                 continue
 
             earnings_count = build_sentiment_for_ticker(ticker, df, None)
@@ -132,7 +132,7 @@ def main():
             # 保存
             storage.save(df, f'{ticker}_features')
 
-            # 统计非零值
+            # 統計非零值
             sentiment_cols = [
                 'news_sentiment_3d', 'news_sentiment_7d',
                 'earnings_surprise_pct', 'has_earnings_report'
@@ -156,8 +156,8 @@ def main():
         time.sleep(0.2)
 
     logger.info(
-        f'\n===== 构建完成 =====\n'
-        f'成功: {success}, 失败: {failed}, 总财报日期: {total_earnings}'
+        f'\n===== 構建完成 =====\n'
+        f'成功: {success}, 失敗: {failed}, 總財報日期: {total_earnings}'
     )
 
 

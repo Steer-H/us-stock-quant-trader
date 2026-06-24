@@ -1,137 +1,137 @@
-# 配置参考
+# 配置參考
 
 ## 1. ModelConfig — 模型配置 (`config/settings.py`)
 
-### 架构参数
+### 架構參數
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `d_model` | 192 | Transformer 隐藏维度 |
-| `n_heads` | 8 | 多头注意力头数 |
-| `n_layers` | 4 | Encoder 层数 |
-| `d_ff` | 768 | Feed-Forward 中间维度 (4×d_model) |
+| `d_model` | 192 | Transformer 隱藏維度 |
+| `n_heads` | 8 | 多頭注意力頭數 |
+| `n_layers` | 4 | Encoder 層數 |
+| `d_ff` | 768 | Feed-Forward 中間維度 (4×d_model) |
 | `dropout` | 0.15 | 通用 Dropout 概率 |
 | `attn_dropout` | 0.1 | 注意力 Dropout |
 | `drop_path_rate` | 0.1 | Stochastic Depth 概率 |
-| `activation` | `'gelu'` | 激活函数 (gelu/relu) |
+| `activation` | `'gelu'` | 激活函數 (gelu/relu) |
 
-### 训练参数
+### 訓練參數
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `batch_size` | 64 | 训练批次大小 |
-| `epochs` | 100 | 训练轮数 |
-| `learning_rate` | 1e-4 | 初始学习率 |
-| `min_lr` | 1e-6 | 最小学习率 |
-| `weight_decay` | 1e-4 | L2 正则化系数 |
-| `grad_clip` | 1.0 | 梯度裁剪阈值 |
+| `batch_size` | 64 | 訓練批次大小 |
+| `epochs` | 100 | 訓練輪數 |
+| `learning_rate` | 1e-4 | 初始學習率 |
+| `min_lr` | 1e-6 | 最小學習率 |
+| `weight_decay` | 1e-4 | L2 正則化係數 |
+| `grad_clip` | 1.0 | 梯度裁剪閾值 |
 | `patience` | 10 | 早停耐心值 |
-| `label_smoothing` | 0.1 | 标签平滑因子 |
+| `label_smoothing` | 0.1 | 標籤平滑因子 |
 | `focal_gamma` | 2.0 | Focal Loss γ |
-| `direction_reward_weight` | 0.6 | 回归损失权重 (MSE) |
-| `magnitude_reward_weight` | 0.4 | 分类损失权重 (BCE) |
+| `direction_reward_weight` | 0.6 | 回歸損失權重 (MSE) |
+| `magnitude_reward_weight` | 0.4 | 分類損失權重 (BCE) |
 
-### 数据参数
+### 數據參數
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `seq_len` | 60 | 输入序列长度 |
-| `feature_columns` | 28 | 技术指标数量 |
-| `prediction_horizon` | 1 | 预测步长 |
-| `use_sentiment` | True | 是否使用情感特征 |
+| `seq_len` | 60 | 輸入序列長度 |
+| `feature_columns` | 28 | 技術指標數量 |
+| `prediction_horizon` | 1 | 預測步長 |
+| `use_sentiment` | True | 是否使用情感特徵 |
 
-### 硬件参数
+### 硬體參數
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `device` | `'mps'` (Apple Silicon) | 训练设备 (mps/cpu/cuda) |
-| `use_amp` | True | 混合精度训练 |
-| `num_workers` | 0 | DataLoader 工作线程 |
+| `device` | `'mps'` (Apple Silicon) | 訓練設備 (mps/cpu/cuda) |
+| `use_amp` | True | 混合精度訓練 |
+| `num_workers` | 0 | DataLoader 工作線程 |
 
-### 路径配置
+### 路徑配置
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `data_dir` | `Path('data')` | 数据目录 |
-| `model_dir` | `Path('models')` | 模型保存目录 |
-| `log_dir` | `Path('logs')` | 日志目录 |
+| `data_dir` | `Path('data')` | 數據目錄 |
+| `model_dir` | `Path('models')` | 模型保存目錄 |
+| `log_dir` | `Path('logs')` | 日誌目錄 |
 
 ---
 
-## 2. 交易参数 (`live_trading/web_server.py`)
+## 2. 交易參數 (`live_trading/web_server.py`)
 
-### 跟踪股票 (40只)
+### 跟蹤股票 (40隻)
 
 ```python
 TRACKED_TICKERS = [
-    # 科技七巨头
+    # 科技七巨頭
     'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA',
-    # 软件/SaaS
+    # 軟體/SaaS
     'NFLX', 'ADBE', 'CRM', 'NOW', 'ORCL',
     # 金融
     'JPM', 'V', 'MA', 'BAC',
-    # 消费
+    # 消費
     'WMT', 'HD', 'NKE', 'SBUX', 'UBER',
-    # 芯片/半导体
+    # 晶片/半導體
     'AVGO', 'AMD', 'INTC', 'QCOM', 'TXN',
-    # 光通信 (高波动)
+    # 光通信 (高波動)
     'AAOI', 'COHR', 'LITE', 'FN',
-    # 存储 (高波动)
+    # 存儲 (高波動)
     'WDC', 'STX', 'NTAP',
-    # 数据中心芯片
+    # 數據中心晶片
     'MRVL', 'MU',
-    # 半导体设备
+    # 半導體設備
     'LRCX', 'AMAT', 'KLAC',
-    # EDA软件
+    # EDA軟體
     'SNPS', 'CDNS',
 ]
 ```
 
-### 风险控制
+### 風險控制
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `PROFIT_TAKE_THRESHOLD` | 0.03 (3%) | 止盈阈值 |
-| `STOP_LOSS_THRESHOLD` | -0.04 (4%) | 止损阈值 |
-| `MAX_POSITION_HOLD_TIME` | 30 (分钟) | 最大持仓时间 |
-| `REENTRY_COOLDOWN` | 5 (分钟) | 卖出后冷却时间 |
-| `POSITION_MAX_PCT` | 0.08 (8%) | 单只最大仓位 |
-| `PREDICTIVE_SELL_THRESHOLD` | 0.55 | 预测卖出触发准确率 |
+| `PROFIT_TAKE_THRESHOLD` | 0.03 (3%) | 止盈閾值 |
+| `STOP_LOSS_THRESHOLD` | -0.04 (4%) | 止損閾值 |
+| `MAX_POSITION_HOLD_TIME` | 30 (分鐘) | 最大持倉時間 |
+| `REENTRY_COOLDOWN` | 5 (分鐘) | 賣出後冷卻時間 |
+| `POSITION_MAX_PCT` | 0.08 (8%) | 單只最大倉位 |
+| `PREDICTIVE_SELL_THRESHOLD` | 0.55 | 預測賣出觸發準確率 |
 
-### 杠杆参数
+### 槓桿參數
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `MAX_LEVERAGE` | 2.0 | 最大杠杆倍数 |
-| `MIN_LEVERAGE` | 0.25 | 最小杠杆倍数 |
-| `MAX_POSITION_PCT_LEVERAGED` | 0.12 (12%) | 杠杆模式最大仓位 |
-| `LEVERAGE_STOP_LOSS` | -0.025 (2.5%) | 杠杆止损 |
-| `DRAWDOWN_DELEVERAGE` | 0.10 (10%) | 回撤去杠杆触发 |
+| `MAX_LEVERAGE` | 2.0 | 最大槓桿倍數 |
+| `MIN_LEVERAGE` | 0.25 | 最小槓桿倍數 |
+| `MAX_POSITION_PCT_LEVERAGED` | 0.12 (12%) | 槓桿模式最大倉位 |
+| `LEVERAGE_STOP_LOSS` | -0.025 (2.5%) | 槓桿止損 |
+| `DRAWDOWN_DELEVERAGE` | 0.10 (10%) | 回撤去槓桿觸發 |
 
-### 杠杆引擎内部常量 (`leverage_engine.py`)
+### 槓桿引擎內部常量 (`leverage_engine.py`)
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `MAX_LEVERAGE` | 2.0 | 全局最大杠杆 |
-| `MIN_LEVERAGE` | 0.25 | 全局最小杠杆 |
-| `DEFAULT_WIN_LOSS_RATIO` | 1.5 | 默认盈亏比 |
-| `MAX_WIN_LOSS_RATIO` | 3.0 | 最大盈亏比 |
-| `HALF_KELLY_FRACTION` | 0.5 | Half-Kelly系数 |
-| `PERF_BOOST_WINRATE` | 0.60 | 加码触发胜率 |
-| `PERF_REDUCE_WINRATE` | 0.45 | 减仓触发胜率 |
+| `MAX_LEVERAGE` | 2.0 | 全局最大槓桿 |
+| `MIN_LEVERAGE` | 0.25 | 全局最小槓桿 |
+| `DEFAULT_WIN_LOSS_RATIO` | 1.5 | 默認盈虧比 |
+| `MAX_WIN_LOSS_RATIO` | 3.0 | 最大盈虧比 |
+| `HALF_KELLY_FRACTION` | 0.5 | Half-Kelly係數 |
+| `PERF_BOOST_WINRATE` | 0.60 | 加碼觸發勝率 |
+| `PERF_REDUCE_WINRATE` | 0.45 | 減倉觸發勝率 |
 
 ### Yahoo Finance 抓取
 
-| 参数 | 默认值 | 说明 |
+| 參數 | 默認值 | 說明 |
 |------|--------|------|
-| `YAHOO_INTERVALS['REGULAR']` | 12 (秒) | 正常交易时段抓取间隔 |
-| `YAHOO_INTERVALS['PRE_MARKET']` | 60 (秒) | 盘前抓取间隔 |
-| `YAHOO_INTERVALS['AFTER_HOURS']` | 60 (秒) | 盘后抓取间隔 |
-| `YAHOO_INTERVALS['CLOSED']` | 60 (秒) | 闭市抓取间隔 |
+| `YAHOO_INTERVALS['REGULAR']` | 12 (秒) | 正常交易時段抓取間隔 |
+| `YAHOO_INTERVALS['PRE_MARKET']` | 60 (秒) | 盤前抓取間隔 |
+| `YAHOO_INTERVALS['AFTER_HOURS']` | 60 (秒) | 盤後抓取間隔 |
+| `YAHOO_INTERVALS['CLOSED']` | 60 (秒) | 閉市抓取間隔 |
 
 ---
 
-## 3. 市场时间 (`market_clock.py`)
+## 3. 市場時間 (`market_clock.py`)
 
 ```python
 MARKET_TIMES = {
@@ -143,13 +143,13 @@ MARKET_TIMES = {
 }
 ```
 
-**假期数据**: 2025-2027年完整美股假期 (Martin Luther King Jr. Day, Presidents Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas, New Year's Day + 浮动调整)
+**假期數據**: 2025-2027年完整美股假期 (Martin Luther King Jr. Day, Presidents Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas, New Year's Day + 浮動調整)
 
 ---
 
-## 4. 资源配置建议
+## 4. 資源配置建議
 
-### 开发/测试环境
+### 開發/測試環境
 ```python
 ModelConfig:
     d_model = 128
@@ -160,7 +160,7 @@ ModelConfig:
     device = 'cpu'
 ```
 
-### 生产环境 (Apple Silicon)
+### 生產環境 (Apple Silicon)
 ```python
 ModelConfig:
     d_model = 192
@@ -172,7 +172,7 @@ ModelConfig:
     use_amp = True
 ```
 
-### 生产环境 (NVIDIA GPU)
+### 生產環境 (NVIDIA GPU)
 ```python
 ModelConfig:
     d_model = 256
@@ -186,14 +186,14 @@ ModelConfig:
 
 ---
 
-## 5. 修改配置后
+## 5. 修改配置後
 
-⚠️ 修改 `ModelConfig` 的参数（尤其是架构参数如 `d_model`、`n_layers`）会导致旧 checkpoint 不兼容。需要：
+⚠️ 修改 `ModelConfig` 的參數（尤其是架構參數如 `d_model`、`n_layers`）會導致舊 checkpoint 不兼容。需要：
 
-1. 删除旧模型: `rm models/*.pt`
-2. 重新训练: `python3 scripts/quick_train.py`
-3. 重启服务
+1. 刪除舊模型: `rm models/*.pt`
+2. 重新訓練: `python3 scripts/quick_train.py`
+3. 重啟服務
 
 ---
 
-> 📖 **返回**: [README.md](README.md) 文档首页
+> 📖 **返回**: [README.md](README.md) 文檔首頁

@@ -1,23 +1,23 @@
-# API 参考文档
+# API 參考文檔
 
-## 基础信息
+## 基礎信息
 
 - **Base URL**: `http://localhost:8080`
-- **协议**: HTTP/1.1
+- **協議**: HTTP/1.1
 - **格式**: JSON (Content-Type: application/json)
-- **字符编码**: UTF-8
+- **字符編碼**: UTF-8
 
 ---
 
-## 端点列表
+## 端點列表
 
-### 1. 健康检查
+### 1. 健康檢查
 
 ```
 GET /api/health
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "status": "ok",
@@ -27,13 +27,13 @@ GET /api/health
 
 ---
 
-### 2. 完整系统状态
+### 2. 完整系統狀態
 
 ```
 GET /api/status
 ```
 
-**响应结构**:
+**響應結構**:
 ```json
 {
   "timestamp": "2026-06-21 14:30:00",
@@ -47,7 +47,7 @@ GET /api/status
     "status_desc": "正常交易",
     "is_open": true,
     "is_active": true,
-    "countdown": "距闭市 2h 30m 15s",
+    "countdown": "距閉市 2h 30m 15s",
     "current_et": "14:30:00",
     "next_trading_day": "2026-06-23"
   },
@@ -136,7 +136,7 @@ GET /api/status
   "recent_trades": [...],
 
   "data_quality": {
-    "source": "Yahoo Finance (实时)",
+    "source": "Yahoo Finance (實時)",
     "last_update": "2026-06-21 14:30:00",
     "latency_ms": 120.5,
     "update_count": 500,
@@ -149,13 +149,13 @@ GET /api/status
 
 ---
 
-### 3. 追踪股票列表
+### 3. 追蹤股票列表
 
 ```
 GET /api/tickers
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "tickers": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", ...],
@@ -163,7 +163,7 @@ GET /api/tickers
 }
 ```
 
-**40只追踪股票**: 科技七巨头 + 软件/SaaS + 金融 + 消费 + 芯片/半导体 + 光通信 + 存储 + 数据中心 + 半导体设备 + EDA
+**40隻追蹤股票**: 科技七巨頭 + 軟體/SaaS + 金融 + 消費 + 晶片/半導體 + 光通信 + 存儲 + 數據中心 + 半導體設備 + EDA
 
 ---
 
@@ -173,10 +173,10 @@ GET /api/tickers
 GET /api/signals
 ```
 
-**响应**:
+**響應**:
 ```json
 {
-  "signals_md": "*[BUY] AAPL 50股 @ $210.00 — 开盘建仓*  \n...",
+  "signals_md": "*[BUY] AAPL 50股 @ $210.00 — 開盤建倉*  \n...",
   "signals": [
     {
       "time": "14:30:00",
@@ -184,7 +184,7 @@ GET /api/signals
       "ticker": "AAPL",
       "qty": 50,
       "price": 210.0,
-      "reason": "开盘建仓(Yahoo价格)"
+      "reason": "開盤建倉(Yahoo價格)"
     }
   ]
 }
@@ -192,24 +192,24 @@ GET /api/signals
 
 ---
 
-### 5. K线数据 (单只)
+### 5. K線數據 (單只)
 
 ```
 GET /api/kline/<ticker>
 ```
 
-**参数**:
-| 参数 | 类型 | 默认值 | 说明 |
+**參數**:
+| 參數 | 類型 | 默認值 | 說明 |
 |------|------|--------|------|
-| `period` | string | `1d` | 时间范围 (1d/5d/1mo/3mo) |
-| `interval` | string | `5m` | K线周期 (1m/5m/15m/30m/1h/1d) |
+| `period` | string | `1d` | 時間範圍 (1d/5d/1mo/3mo) |
+| `interval` | string | `5m` | K線周期 (1m/5m/15m/30m/1h/1d) |
 
 **示例**:
 ```
 GET /api/kline/AAPL?period=5d&interval=15m
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "ticker": "AAPL",
@@ -227,31 +227,31 @@ GET /api/kline/AAPL?period=5d&interval=15m
 }
 ```
 
-**time字段**: Unix 时间戳 (秒)，LightweightCharts 直接兼容。
+**time欄位**: Unix 時間戳 (秒)，LightweightCharts 直接兼容。
 
 ---
 
-### 6. K线数据 (批量)
+### 6. K線數據 (批量)
 
 ```
 GET /api/kline/multi
 ```
 
-**参数**:
-| 参数 | 类型 | 默认值 | 说明 |
+**參數**:
+| 參數 | 類型 | 默認值 | 說明 |
 |------|------|--------|------|
-| `tickers` | string | `AAPL,NVDA,MSFT,GOOGL` | 逗号分隔的股票代码 |
-| `period` | string | `1d` | 时间范围 |
-| `interval` | string | `15m` | K线周期 |
+| `tickers` | string | `AAPL,NVDA,MSFT,GOOGL` | 逗號分隔的股票代碼 |
+| `period` | string | `1d` | 時間範圍 |
+| `interval` | string | `15m` | K線周期 |
 
-**限制**: 最多返回6只股票的数据。
+**限制**: 最多返回6隻股票的數據。
 
 **示例**:
 ```
 GET /api/kline/multi?tickers=AAPL,NVDA,MSFT&period=5d&interval=15m
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "data": {
@@ -265,13 +265,13 @@ GET /api/kline/multi?tickers=AAPL,NVDA,MSFT&period=5d&interval=15m
 
 ---
 
-### 7. 基准曲线
+### 7. 基準曲線
 
 ```
 GET /api/benchmark_curve
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "points": [
@@ -288,59 +288,59 @@ GET /api/benchmark_curve
 }
 ```
 
-**time字段**: Unix 时间戳 (秒)
+**time欄位**: Unix 時間戳 (秒)
 **nasdaq/strategy**: 百分比收益率 (如 13.77 表示 +13.77%)
 
 ---
 
-### 8. 回测摘要
+### 8. 回測摘要
 
 ```
 GET /api/backtest_summary
 ```
 
-**响应**:
+**響應**:
 ```json
 {
   "available": false,
-  "message": "运行 python main.py backtest 生成回测结果",
+  "message": "運行 python main.py backtest 生成回測結果",
   "summary": {}
 }
 ```
 
 ---
 
-### 9. 仪表盘 (HTML)
+### 9. 儀錶盤 (HTML)
 
 ```
 GET /
 ```
 
-返回完整的 Web 仪表盘 HTML 页面。
+返回完整的 Web 儀錶盤 HTML 頁面。
 
 ---
 
-## 错误处理
+## 錯誤處理
 
-所有端点返回标准 JSON 错误：
+所有端點返回標準 JSON 錯誤：
 
 ```json
 {
-  "error": "错误描述",
+  "error": "錯誤描述",
   "points": [],
   "count": 0
 }
 ```
 
-HTTP 状态码:
+HTTP 狀態碼:
 - `200` — 成功
-- `500` — 服务器内部错误
+- `500` — 伺服器內部錯誤
 
 ---
 
-## 轮询建议
+## 輪詢建議
 
-前端以 1 秒间隔轮询 `/api/status`，渲染所有面板数据。
+前端以 1 秒間隔輪詢 `/api/status`，渲染所有面板數據。
 
 ```javascript
 setInterval(async () => {
@@ -351,4 +351,4 @@ setInterval(async () => {
 
 ---
 
-> 📖 **下一步**: 阅读 [CODE_STRUCTURE.md](CODE_STRUCTURE.md) 了解代码组织
+> 📖 **下一步**: 閱讀 [CODE_STRUCTURE.md](CODE_STRUCTURE.md) 了解代碼組織

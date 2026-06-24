@@ -1,16 +1,4 @@
-"""
-实时统计预测模块
-
-基于技术指标的轻量级预测引擎，用于替代随机模拟。
-策略:
-- 短期动量 (Short-term Momentum)
-- 均值回归检测 (Mean Reversion)
-- 成交量异常检测
-- 多因子综合评分
-
-在线运行时每秒tick调用，低延迟。
-离线时可用历史数据批量训练Transformer。
-"""
+"""Statistical predictor using rolling window statistics."""
 
 import numpy as np
 import logging
@@ -23,63 +11,63 @@ logger = logging.getLogger(__name__)
 
 class RealtimePredictor:
     """
-    实时统计预测器
+    實時統計預測器
     
-    不需要GPU训练，基于价格序列实时计算信号。
-    可以作为Transformer离线训练的基准参考。
+    不需要GPU訓練，基於價格序列實時計算信號。
+    可以作為Transformer離線訓練的基準參考。
     
     使用示例:
         pred = RealtimePredictor()
         signal, confidence = pred.predict('AAPL', current_price=295.50)
-        # signal: 1=涨, 0=跌
+        # signal: 1=漲, 0=跌
     """
     
     def __init__(self, window_size: int = 120, lookback_minutes: int = 30):
         """
-        参数:
-            window_size: 价格历史保留长度（秒级tick数）
-            lookback_minutes: 回看窗口（分钟）
+        參數:
+            window_size: 價格歷史保留長度（秒級tick數）
+            lookback_minutes: 回看窗口（分鐘）
         """
         self.window_size = window_size
         self.lookback_minutes = lookback_minutes
         
-        # 每只股票的价格历史: {ticker: deque(maxlen=window_size)}
+        # 每隻股票的價格歷史: {ticker: deque(maxlen=window_size)}
         self.price_history: Dict[str, deque] = {}
         
-        # 成交量历史
+        # 成交量歷史
         self.volume_history: Dict[str, deque] = {}
         
-        # 预测统计
+        # 預測統計
         self.total_predictions: int = 0
         self.correct_predictions: int = 0
         self.prediction_history: deque = deque(maxlen=200)
         
-        # 因子权重（可通过离线训练调整）
+        # 因子權重（可通過離線訓練調整）
         self.factor_weights = {
-            'momentum': 0.40,       # 动量因子
-            'mean_reversion': 0.25,  # 均值回归
+            'momentum': 0.40,       # 動量因子
+            'mean_reversion': 0.25,  # 均值回歸
             'volume': 0.15,          # 成交量
-            'volatility': 0.20,      # 波动率
+            'volatility': 0.20,      # 波動率
         }
         
-        # 因子滚动表现追踪（用于自适应权重调整）
+        # 因子滾動表現追蹤（用於自適應權重調整）
         self.factor_performance: Dict[str, Dict[str, int]] = {
             'momentum': {'correct': 0, 'total': 0},
             'mean_reversion': {'correct': 0, 'total': 0},
             'volume': {'correct': 0, 'total': 0},
             'volatility': {'correct': 0, 'total': 0},
         }
-        self._factor_signal_cache: Dict[str, float] = {}  # 缓存最近信号用于学习
-        self._regime: str = 'trending'  # 市场状态: trending / mean_reverting / volatile
+        self._factor_signal_cache: Dict[str, float] = {}  # 緩存最近信號用於學習
+        self._regime: str = 'trending'  # 市場狀態: trending / mean_reverting / volatile
         self._regime_update_counter: int = 0
         
-        logger.info(f"统计预测器初始化: window={window_size}, lookback={lookback_minutes}min")
+        logger.info(f"統計預測器初始化: window={window_size}, lookback={lookback_minutes}min")
     
     def update_price(self, ticker: str, price: float, volume: Optional[float] = None):
         """
-        更新价格历史
+        更新價格歷史
         
-        每秒tick调用一次，追加最新价格。
+        每秒tick調用一次，追加最新價格。
         """
         if ticker not in self.price_history:
             self.price_history[ticker] = deque(maxlen=self.window_size)
@@ -91,48 +79,48 @@ class RealtimePredictor:
     
     def predict(self, ticker: str, current_price: float) -> Tuple[int, float, Dict]:
         """
-        生成预测信号
+        生成預測信號
         
-        参数:
-            ticker: 股票代码
-            current_price: 当前价格
+        參數:
+            ticker: 股票代碼
+            current_price: 當前價格
         
         返回:
             (direction, confidence, factors_detail)
-            direction: 1=涨, 0=跌
+            direction: 1=漲, 0=跌
             confidence: 0-1置信度
-            factors_detail: 各因子详细得分
+            factors_detail: 各因子詳細得分
         """
         prices = self.price_history.get(ticker, deque(maxlen=self.window_size))
         
-        # 数据不足时返回中立/微偏多信号(美股长期向上)
+        # 數據不足時返回中立/微偏多信號(美股長期向上)
         if len(prices) < 10:
-            return (1, 0.52, {'note': '数据不足,默认微偏多'})
+            return (1, 0.52, {'note': '數據不足,默認微偏多'})
         
         price_array = np.array(list(prices))
         current = current_price
         
 
-        # 更新市场状态
+        # 更新市場狀態
         self._update_regime(ticker)
         
-        # ── 因子1: 短期动量 (最近5/10/20个tick的趋势) ──
+        # ── 因子1: 短期動量 (最近5/10/20個tick的趨勢) ──
         momentum_score = self._calc_momentum(price_array)
         self._factor_signal_cache['momentum'] = momentum_score
         
-        # ── 因子2: 均值回归 (价格偏离均线的程度) ──
+        # ── 因子2: 均值回歸 (價格偏離均線的程度) ──
         mr_score = self._calc_mean_reversion(price_array, current)
         self._factor_signal_cache['mean_reversion'] = mr_score
         
-        # ── 因子3: 成交量异常 ──
+        # ── 因子3: 成交量異常 ──
         volume_score = self._calc_volume_signal(ticker, price_array)
         self._factor_signal_cache['volume'] = volume_score
         
-        # ── 因子4: 波动率 ──
+        # ── 因子4: 波動率 ──
         volatility_score = self._calc_volatility(price_array)
         self._factor_signal_cache['volatility'] = volatility_score
         
-        # ── 综合评分 ──
+        # ── 綜合評分 ──
         composite = (
             self.factor_weights['momentum'] * momentum_score +
             self.factor_weights['mean_reversion'] * mr_score +
@@ -140,14 +128,14 @@ class RealtimePredictor:
             self.factor_weights['volatility'] * volatility_score
         )
         
-        # 方向判断: 综合分 > 0 → 涨, ≤ 0 → 跌
+        # 方向判斷: 綜合分 > 0 → 漲, ≤ 0 → 跌
         direction = 1 if composite > 0 else 0
         
-        # 置信度: 基于信号强度
+        # 置信度: 基於信號強度
         raw_confidence = 0.5 + abs(composite) * 0.5
         confidence = min(max(raw_confidence, 0.50), 0.90)
         
-        # 记录预测
+        # 記錄預測
         self.total_predictions += 1
         self.prediction_history.append({
             'ticker': ticker,
@@ -168,19 +156,19 @@ class RealtimePredictor:
     
     def _calc_momentum(self, prices: np.ndarray) -> float:
         """
-        短期动量因子
+        短期動量因子
         
-        计算最近多个窗口的收益率加权平均。
-        正值=上涨趋势，负值=下跌趋势。
+        計算最近多個窗口的收益率加權平均。
+        正值=上漲趨勢，負值=下跌趨勢。
         
-        返回: -1.0 ~ +1.0 归一化得分
+        返回: -1.0 ~ +1.0 歸一化得分
         """
         if len(prices) < 5:
             return 0.0
         
         n = len(prices)
         
-        # 多个窗口的收益率
+        # 多個窗口的收益率
         windows = []
         for w in [3, 5, 10, 20]:
             if n > w:
@@ -190,28 +178,28 @@ class RealtimePredictor:
         if not windows:
             return 0.0
         
-        # 近期窗口权重更高
+        # 近期窗口權重更高
         weights = [0.4, 0.3, 0.2, 0.1][:len(windows)]
         weights = np.array(weights) / sum(weights)
         
         weighted_ret = np.dot(windows, weights)
         
-        # Tanh归一化到[-1, 1]
+        # Tanh歸一化到[-1, 1]
         return float(np.tanh(weighted_ret * 20))
     
     def _calc_mean_reversion(self, prices: np.ndarray, current: float) -> float:
         """
-        均值回归因子
+        均值回歸因子
         
-        价格偏离移动均线越远，回归概率越大。
-        正值=超卖(看涨回归)，负值=超买(看跌回归)。
+        價格偏離移動均線越遠，回歸概率越大。
+        正值=超賣(看漲回歸)，負值=超買(看跌回歸)。
         
-        返回: -1.0 ~ +1.0 归一化得分
+        返回: -1.0 ~ +1.0 歸一化得分
         """
         if len(prices) < 10:
             return 0.0
         
-        # 计算多个周期的均线
+        # 計算多個周期的均線
         mas = {}
         for period in [10, 30, 60]:
             if len(prices) >= period:
@@ -220,25 +208,25 @@ class RealtimePredictor:
         if not mas:
             return 0.0
         
-        # 价格偏离度的加权平均
+        # 價格偏離度的加權平均
         deviations = []
         weights = []
         for period, ma in mas.items():
-            dev = (current - ma) / ma  # 正=高于均线, 负=低于均线
+            dev = (current - ma) / ma  # 正=高於均線, 負=低於均線
             deviations.append(dev)
-            weights.append(1.0 / period)  # 短期均线权重更高
+            weights.append(1.0 / period)  # 短期均線權重更高
         
         norm_weights = np.array(weights) / sum(weights)
         avg_dev = np.dot(deviations, norm_weights)
         
-        # 符号取反: 高于均线→卖出信号(负), 低于均线→买入信号(正)
+        # 符號取反: 高於均線→賣出信號(負), 低於均線→買入信號(正)
         return float(-np.tanh(avg_dev * 30))
     
     def _calc_volume_signal(self, ticker: str, prices: np.ndarray) -> float:
         """
-        成交量异常检测
+        成交量異常檢測
         
-        成交量突增往往预示趋势变化。
+        成交量突增往往預示趨勢變化。
         
         返回: -1.0 ~ +1.0
         """
@@ -256,30 +244,30 @@ class RealtimePredictor:
         vol_ratio = recent_vol / historical_vol
         
         if vol_ratio > 1.5:
-            # 成交量放量: 跟随趋势
+            # 成交量放量: 跟隨趨勢
             if len(prices) >= 5:
                 trend = (prices[-1] - prices[-5]) / prices[-5]
                 return float(np.tanh(trend * 30))
             return 0.1  # 微偏多
         elif vol_ratio < 0.5:
-            # 成交量萎缩: 趋势减弱
+            # 成交量萎縮: 趨勢減弱
             return -0.1
         
         return 0.0
     
     def _calc_volatility(self, prices: np.ndarray) -> float:
         """
-        波动率因子
+        波動率因子
         
-        高波动率→风险增加→偏空
-        低波动率→稳定→偏多
+        高波動率→風險增加→偏空
+        低波動率→穩定→偏多
         
         返回: -1.0 ~ +1.0
         """
         if len(prices) < 10:
             return 0.0
         
-        # 计算收益率标准差（波动率）
+        # 計算收益率標準差（波動率）
         returns = np.diff(prices) / prices[:-1]
         if len(returns) < 2:
             return 0.0
@@ -292,24 +280,24 @@ class RealtimePredictor:
         else:
             vol_ratio = 1.0
         
-        # 波动率升高→负信号; 降低→正信号
+        # 波動率升高→負信號; 降低→正信號
         return float(-np.tanh((vol_ratio - 1.0) * 3))
     
     def get_accuracy(self) -> float:
-        """获取预测准确率"""
+        """獲取預測準確率"""
         if self.total_predictions == 0:
             return 0.0
         return self.correct_predictions / self.total_predictions
     
     def confirm(self, ticker: str, actual_direction: int) -> None:
         """
-        确认最近一次对ticker的预测结果
+        確認最近一次對ticker的預測結果
         
-        参数:
-            ticker: 股票代码
-            actual_direction: 实际方向 (1=涨, 0=跌)
+        參數:
+            ticker: 股票代碼
+            actual_direction: 實際方向 (1=漲, 0=跌)
         """
-        # 找最近一次对该ticker的未确认预测
+        # 找最近一次對該ticker的未確認預測
         for i in range(len(self.prediction_history) - 1, -1, -1):
             pred = self.prediction_history[i]
             if pred['ticker'] == ticker and pred.get('confirmed') is None:
@@ -319,7 +307,7 @@ class RealtimePredictor:
                 if pred['is_correct']:
                     self.correct_predictions += 1
                 
-                # 更新各因子表现
+                # 更新各因子表現
                 if hasattr(self, '_factor_signal_cache') and self._factor_signal_cache:
                     for factor, signal in self._factor_signal_cache.items():
                         if factor in self.factor_performance:
@@ -331,9 +319,9 @@ class RealtimePredictor:
     
     def adjust_weights(self, backtest_results: Dict[str, float]):
         """
-        根据回测结果自动调整因子权重
+        根據回測結果自動調整因子權重
         
-        参数:
+        參數:
             backtest_results: {'momentum': accuracy, 'mean_reversion': accuracy, ...}
         """
         total_acc = sum(backtest_results.values())
@@ -344,10 +332,10 @@ class RealtimePredictor:
             if factor in backtest_results:
                 self.factor_weights[factor] = backtest_results[factor] / total_acc
         
-        logger.info(f"因子权重已调整: {self.factor_weights}")
+        logger.info(f"因子權重已調整: {self.factor_weights}")
     
     def to_dict(self) -> Dict:
-        """序列化为字典（用于状态持久化）"""
+        """序列化為字典（用於狀態持久化）"""
         price_hist = {}
         for ticker, dq in self.price_history.items():
             price_hist[ticker] = list(dq)
@@ -372,7 +360,7 @@ class RealtimePredictor:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'RealtimePredictor':
-        """从字典恢复"""
+        """從字典恢復"""
         pred = cls(
             window_size=data.get('window_size', 120),
             lookback_minutes=data.get('lookback_minutes', 30),
@@ -400,12 +388,12 @@ class RealtimePredictor:
 
 def train_offline_transformer():
     """
-    离线训练Transformer模型（休市时调用）
+    離線訓練Transformer模型（休市時調用）
     
-    使用已处理的parquet数据训练，保存模型到data/models/。
+    使用已處理的parquet數據訓練，保存模型到data/models/。
     
     返回:
-        方向准确率 或 None
+        方向準確率 或 None
     """
     import sys
     from pathlib import Path
@@ -415,32 +403,32 @@ def train_offline_transformer():
     from ml_model.trainer import ModelTrainer
     from ml_model.data_loader import prepare_data
     
-    logger.info("🔄 开始离线训练 Transformer...")
+    logger.info("🔄 開始離線訓練 Transformer...")
     
     try:
-        # 加载所有已处理股票的特征数据
+        # 加載所有已處理股票的特徵數據
         train_loader, val_loader, test_loader, scaler = prepare_data(config=model_config)
         
         if train_loader is None:
-            logger.warning("无训练数据可用，跳过训练")
+            logger.warning("無訓練數據可用，跳過訓練")
             return None
         
-        # 训练
+        # 訓練
         trainer = ModelTrainer(model_config)
         trainer.train(train_loader, val_loader, epochs=30)
         
-        # 评估
+        # 評估
         result = trainer.evaluate(test_loader)
         acc = result.direction_accuracy
         
         # 保存模型
         trainer.save_model('transformer_stock_latest')
-        logger.info(f"✅ Transformer训练完成，方向准确率: {acc:.2%}")
+        logger.info(f"✅ Transformer訓練完成，方向準確率: {acc:.2%}")
         
         return acc
         
     except Exception as e:
-        logger.error(f"离线训练失败: {e}")
+        logger.error(f"離線訓練失敗: {e}")
         import traceback
         traceback.print_exc()
         return None

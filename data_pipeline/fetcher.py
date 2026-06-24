@@ -1,21 +1,4 @@
-"""
-美股量化交易系统 - 数据获取模块
-
-提供统一的数据获取接口，支持多种数据源：
-- Yahoo Finance: 免费历史数据（爬虫/API混合使用）
-- Polygon.io: 付费实时+历史行情数据
-- Interactive Brokers: 券商提供的实时行情数据
-
-设计模式：策略模式（Strategy Pattern）
-- DataFetcher 为抽象基类
-- 各数据源实现为具体策略类
-- 通过工厂函数 create_fetcher() 根据配置选择策略
-
-数据获取优先级：
-1. 历史数据: Yahoo Finance（免费、覆盖全面）→ Polygon（付费、更精确）
-2. 实时数据: IBKR（实盘）→ Polygon（模拟/回测）
-3. 参考数据: Polygon → Yahoo Finance
-"""
+"""Yahoo Finance data fetcher with caching."""
 
 import logging
 import time
@@ -43,63 +26,63 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 抽象数据获取器基类
+# 抽象數據獲取器基類
 # ============================================================================
 class DataFetcher(ABC):
     """
-    数据获取器抽象基类
+    數據獲取器抽象基類
     
-    所有数据源实现必须继承此类并实现其抽象方法。
-    子类只需关注数据获取逻辑，重试、速率限制等通用逻辑由基类处理。
+    所有數據源實現必須繼承此類並實現其抽象方法。
+    子類只需關注數據獲取邏輯，重試、速率限制等通用邏輯由基類處理。
     """
     
-    # 子类可覆盖的元数据
+    # 子類可覆蓋的元數據
     SOURCE_NAME: str = "abstract"
     MAX_RETRIES: int = 3
     RETRY_DELAY: float = 2.0  # 秒
-    RATE_LIMIT_CALLS: int = 5     # 每秒最大请求数
+    RATE_LIMIT_CALLS: int = 5     # 每秒最大請求數
     RATE_LIMIT_PERIOD: float = 1.0  # 限速窗口（秒）
     
     def __init__(self, config: DataSourceConfig):
         """
-        参数:
-            config: 数据源配置对象
+        參數:
+            config: 數據源配置對象
         """
         self.config = config
-        self._last_call_times: List[float] = []  # 用于速率限制的调用时间戳队列
+        self._last_call_times: List[float] = []  # 用於速率限制的調用時間戳隊列
         self._session = self._create_session()
     
     def _create_session(self) -> requests.Session:
         """
-        创建带重试机制的HTTP会话
+        創建帶重試機制的HTTP會話
         
-        使用指数退避重试策略：
-        - 第1次重试: 等待 1s
-        - 第2次重试: 等待 2s
-        - 第3次重试: 等待 4s
-        总共最多重试3次
+        使用指數退避重試策略：
+        - 第1次重試: 等待 1s
+        - 第2次重試: 等待 2s
+        - 第3次重試: 等待 4s
+        總共最多重試3次
         
         返回:
-            配置好的requests.Session对象
+            配置好的requests.Session對象
         """
         session = requests.Session()
         
         retry_strategy = Retry(
             total=self.MAX_RETRIES,
-            backoff_factor=1.0,         # 指数退避因子
-            status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码触发重试
-            allowed_methods=["GET"]      # 仅重试GET请求（幂等安全）
+            backoff_factor=1.0,         # 指數退避因子
+            status_forcelist=[429, 500, 502, 503, 504],  # 這些狀態碼觸發重試
+            allowed_methods=["GET"]      # 僅重試GET請求（冪等安全）
         )
         
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=10,     # 连接池大小
-            pool_maxsize=20          # 最大连接数
+            pool_connections=10,     # 連接池大小
+            pool_maxsize=20          # 最大連接數
         )
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         
-        # 设置User-Agent，避免被某些API拒绝
+        # 設置User-Agent，避免被某些API拒絕
         session.headers.update({
             'User-Agent': 'QuantTradingSystem/1.0 (Educational Purpose)'
         })
@@ -108,22 +91,22 @@ class DataFetcher(ABC):
     
     def _rate_limit(self) -> None:
         """
-        速率限制：确保不超过API调用频率限制
+        速率限制：確保不超過API調用頻率限制
         
-        使用滑动窗口算法，如果过去 RATE_LIMIT_PERIOD 秒内的调用次数
-        达到 RATE_LIMIT_CALLS，则等待到下一个窗口。
+        使用滑動窗口算法，如果過去 RATE_LIMIT_PERIOD 秒內的調用次數
+        達到 RATE_LIMIT_CALLS，則等待到下一個窗口。
         
-        时间复杂度: O(k)，k为窗口内调用次数（通常很小）
-        空间复杂度: O(k)
+        時間複雜度: O(k)，k為窗口內調用次數（通常很小）
+        空間複雜度: O(k)
         """
         now = time.monotonic()
         window_start = now - self.RATE_LIMIT_PERIOD
         
-        # 清理过期的调用记录（滑动窗口）
+        # 清理過期的調用記錄（滑動窗口）
         self._last_call_times = [t for t in self._last_call_times if t > window_start]
         
         if len(self._last_call_times) >= self.RATE_LIMIT_CALLS:
-            # 需要等待到最早的调用过期
+            # 需要等待到最早的調用過期
             wait_time = self._last_call_times[0] + self.RATE_LIMIT_PERIOD - now
             if wait_time > 0:
                 logger.debug(f"速率限制: 等待 {wait_time:.2f}s")
@@ -140,20 +123,20 @@ class DataFetcher(ABC):
         auto_adjust: bool = True
     ) -> pd.DataFrame:
         """
-        获取股票日线数据（OHLCV）
+        獲取股票日線數據（OHLCV）
         
-        参数:
-            ticker: 股票代码 (如 'AAPL')
-            start_date: 开始日期 'YYYY-MM-DD'
-            end_date: 结束日期 'YYYY-MM-DD'
-            auto_adjust: 是否自动复权
+        參數:
+            ticker: 股票代碼 (如 'AAPL')
+            start_date: 開始日期 'YYYY-MM-DD'
+            end_date: 結束日期 'YYYY-MM-DD'
+            auto_adjust: 是否自動復權
         
         返回:
             包含以下列的DataFrame:
             - date (索引): 日期
-            - open, high, low, close: OHLC价格
+            - open, high, low, close: OHLC價格
             - volume: 成交量
-            - adj_close: 复权收盘价（如适用）
+            - adj_close: 復權收盤價（如適用）
         """
         pass
     
@@ -165,28 +148,28 @@ class DataFetcher(ABC):
         days_back: int = 5
     ) -> pd.DataFrame:
         """
-        获取日内分时数据
+        獲取日內分時數據
         
-        参数:
-            ticker: 股票代码
-            interval: K线周期 ('1min', '5min', '15min', '30min', '1hour')
-            days_back: 回溯天数
+        參數:
+            ticker: 股票代碼
+            interval: K線周期 ('1min', '5min', '15min', '30min', '1hour')
+            days_back: 回溯天數
         
         返回:
-            日内分时OHLCV DataFrame
+            日內分時OHLCV DataFrame
         """
         pass
     
     @abstractmethod
     def fetch_reference_data(self, ticker: str) -> Dict[str, Any]:
         """
-        获取股票参考数据（基本面信息）
+        獲取股票參考數據（基本面信息）
         
-        参数:
-            ticker: 股票代码
+        參數:
+            ticker: 股票代碼
         
         返回:
-            包含公司名称、市值、行业、流通股数等信息的字典
+            包含公司名稱、市值、行業、流通股數等信息的字典
         """
         pass
     
@@ -198,19 +181,19 @@ class DataFetcher(ABC):
         max_workers: Optional[int] = None
     ) -> Dict[str, pd.DataFrame]:
         """
-        批量获取多只股票的日线数据（并发请求）
+        批量獲取多隻股票的日線數據（並發請求）
         
-        使用ThreadPoolExecutor实现并发IO，适用于网络IO密集型任务。
-        注意：需遵守API速率限制，不同数据源的速率限制不同。
+        使用ThreadPoolExecutor實現並發IO，適用於網絡IO密集型任務。
+        注意：需遵守API速率限制，不同數據源的速率限制不同。
         
-        时间复杂度: O(n*m/p)，n=股票数，m=单股数据量，p=并发数
-        空间复杂度: O(n*m)
+        時間複雜度: O(n*m/p)，n=股票數，m=單股數據量，p=並發數
+        空間複雜度: O(n*m)
         
-        参数:
-            tickers: 股票代码列表
-            start_date: 开始日期
-            end_date: 结束日期
-            max_workers: 最大并发数（默认使用系统配置）
+        參數:
+            tickers: 股票代碼列表
+            start_date: 開始日期
+            end_date: 結束日期
+            max_workers: 最大並發數（默認使用系統配置）
         
         返回:
             字典: {ticker: DataFrame}
@@ -222,7 +205,7 @@ class DataFetcher(ABC):
         failed: List[str] = []
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
+            # 提交所有任務
             future_to_ticker = {
                 executor.submit(
                     self.fetch_daily_bars, ticker, start_date, end_date
@@ -230,65 +213,65 @@ class DataFetcher(ABC):
                 for ticker in tickers
             }
             
-            # 收集结果
+            # 收集結果
             for future in as_completed(future_to_ticker):
                 ticker = future_to_ticker[future]
                 try:
                     df = future.result()
                     if df is not None and not df.empty:
                         results[ticker] = df
-                        logger.debug(f"已获取 {ticker} 数据: {len(df)} 行")
+                        logger.debug(f"已獲取 {ticker} 數據: {len(df)} 行")
                     else:
                         failed.append(ticker)
                 except Exception as e:
-                    logger.warning(f"获取 {ticker} 数据失败: {e}")
+                    logger.warning(f"獲取 {ticker} 數據失敗: {e}")
                     failed.append(ticker)
         
         if failed:
-            logger.warning(f"以下股票数据获取失败 ({len(failed)}/{len(tickers)}): {failed}")
+            logger.warning(f"以下股票數據獲取失敗 ({len(failed)}/{len(tickers)}): {failed}")
         
-        logger.info(f"批量数据获取完成: 成功 {len(results)}/{len(tickers)}")
+        logger.info(f"批量數據獲取完成: 成功 {len(results)}/{len(tickers)}")
         return results
     
     def __del__(self):
-        """析构时关闭HTTP会话"""
+        """析構時關閉HTTP會話"""
         if hasattr(self, '_session'):
             self._session.close()
 
 
 # ============================================================================
-# Yahoo Finance 数据获取器
+# Yahoo Finance 數據獲取器
 # ============================================================================
 class YahooFetcher(DataFetcher):
     """
-    基于Yahoo Finance的数据获取器
+    基於Yahoo Finance的數據獲取器
     
-    优点：
-    - 免费，无需API密钥
-    - 覆盖美股历史数据全面（1970年至今）
-    - 自动处理分股和分红复权
+    優點：
+    - 免費，無需API密鑰
+    - 覆蓋美股歷史數據全面（1970年至今）
+    - 自動處理分股和分紅復權
     
     限制：
-    - 速率限制严格（建议每秒不超过2个请求）
-    - 部分已下市股票数据可能不完整
-    - 日内数据仅提供最近30天
+    - 速率限制嚴格（建議每秒不超過2個請求）
+    - 部分已下市股票數據可能不完整
+    - 日內數據僅提供最近30天
     
-    实现方式：
-    使用 yfinance 库，该库内部解析Yahoo Finance的公开API端点。
+    實現方式：
+    使用 yfinance 庫，該庫內部解析Yahoo Finance的公開API端點。
     """
     
     SOURCE_NAME = "YahooFinance"
-    RATE_LIMIT_CALLS = 2  # Yahoo Finance速率限制较严格
+    RATE_LIMIT_CALLS = 2  # Yahoo Finance速率限制較嚴格
     
     def __init__(self, config: DataSourceConfig):
         super().__init__(config)
-        # 延迟导入 yfinance，避免非必要依赖
+        # 延遲導入 yfinance，避免非必要依賴
         try:
             import yfinance as yf
             self.yf = yf
         except ImportError:
             raise ConfigurationError(
-                "yfinance 未安装，请执行: pip install yfinance"
+                "yfinance 未安裝，請執行: pip install yfinance"
             )
     
     def fetch_daily_bars(
@@ -299,68 +282,68 @@ class YahooFetcher(DataFetcher):
         auto_adjust: bool = True
     ) -> pd.DataFrame:
         """
-        通过Yahoo Finance获取日线OHLCV数据
+        通過Yahoo Finance獲取日線OHLCV數據
         
-        Yahoo Finance自动提供分股和分红复权数据，
-        auto_adjust=True时返回的close即为adj_close。
+        Yahoo Finance自動提供分股和分紅復權數據，
+        auto_adjust=True時返回的close即為adj_close。
         
-        参数:
-            ticker: 股票代码
-            start_date: 开始日期 'YYYY-MM-DD'
-            end_date: 结束日期 'YYYY-MM-DD'
-            auto_adjust: 是否使用复权价格
+        參數:
+            ticker: 股票代碼
+            start_date: 開始日期 'YYYY-MM-DD'
+            end_date: 結束日期 'YYYY-MM-DD'
+            auto_adjust: 是否使用復權價格
         
         返回:
-            OHLCV DataFrame，索引为日期
+            OHLCV DataFrame，索引為日期
         """
         if not validate_ticker(ticker):
-            raise DataSourceError(f"无效的股票代码: {ticker}", {'ticker': ticker})
+            raise DataSourceError(f"無效的股票代碼: {ticker}", {'ticker': ticker})
         
         self._rate_limit()
         
         try:
-            with Timer(f"Yahoo获取{ticker}日线数据"):
+            with Timer(f"Yahoo獲取{ticker}日線數據"):
                 stock = self.yf.Ticker(ticker)
                 
-                # 获取历史数据
-                # auto_adjust=False 返回未复权数据，含dividends和stock splits列
-                # auto_adjust=True 返回复权后的OHLC数据
+                # 獲取歷史數據
+                # auto_adjust=False 返回未復權數據，含dividends和stock splits列
+                # auto_adjust=True 返回復權後的OHLC數據
                 df = stock.history(
                     start=start_date,
                     end=end_date,
                     auto_adjust=auto_adjust,
-                    actions=True  # 包含分红和分股信息
+                    actions=True  # 包含分紅和分股信息
                 )
                 
                 if df.empty:
                     raise DataQualityError(
-                        f"{ticker} 在 {start_date}~{end_date} 期间无数据",
+                        f"{ticker} 在 {start_date}~{end_date} 期間無數據",
                         {'ticker': ticker}
                     )
                 
-                # 统一列名格式（小写）
+                # 統一列名格式（小寫）
                 df.columns = [c.lower().replace(' ', '_') for c in df.columns]
                 
-                # 确保必要的列存在
+                # 確保必要的列存在
                 required_cols = {'open', 'high', 'low', 'close', 'volume'}
                 missing = required_cols - set(df.columns)
                 if missing:
                     raise DataQualityError(
-                        f"{ticker} 数据缺少列: {missing}",
+                        f"{ticker} 數據缺少列: {missing}",
                         {'ticker': ticker, 'missing': list(missing)}
                     )
                 
-                # 添加ticker标记
+                # 添加ticker標記
                 df['ticker'] = ticker
                 
-                logger.info(f"已获取 {ticker}: {start_date}~{end_date}, 共{len(df)}条记录")
+                logger.info(f"已獲取 {ticker}: {start_date}~{end_date}, 共{len(df)}條記錄")
                 return df
                 
         except Exception as e:
             if isinstance(e, (DataSourceError, DataQualityError)):
                 raise
             raise DataSourceError(
-                f"Yahoo获取{ticker}数据时出错: {str(e)}",
+                f"Yahoo獲取{ticker}數據時出錯: {str(e)}",
                 {'ticker': ticker, 'error_type': type(e).__name__}
             )
     
@@ -371,24 +354,24 @@ class YahooFetcher(DataFetcher):
         days_back: int = 5
     ) -> pd.DataFrame:
         """
-        获取日内分时数据
+        獲取日內分時數據
         
-        注意：Yahoo Finance免费API的日内数据限制：
-        - 1min数据: 最多7天
+        注意：Yahoo Finance免費API的日內數據限制：
+        - 1min數據: 最多7天
         - 5min/15min/30min: 最多60天
         - 1hour: 最多730天
         
-        参数:
-            ticker: 股票代码
-            interval: K线周期
-            days_back: 回溯天数
+        參數:
+            ticker: 股票代碼
+            interval: K線周期
+            days_back: 回溯天數
         
         返回:
-            日内分时DataFrame
+            日內分時DataFrame
         """
         self._rate_limit()
         
-        # Yahoo Finance支持的日内周期映射
+        # Yahoo Finance支持的日內周期映射
         valid_intervals = {'1m': '1m', '5m': '5m', '15m': '15m', 
                           '30m': '30m', '1h': '60m', '60m': '60m'}
         
@@ -399,33 +382,33 @@ class YahooFetcher(DataFetcher):
             df = stock.history(period=f'{days_back}d', interval=yf_interval)
             
             if df.empty:
-                logger.warning(f"{ticker} 无 {days_back}d 日内数据")
+                logger.warning(f"{ticker} 無 {days_back}d 日內數據")
                 return pd.DataFrame()
             
             df.columns = [c.lower().replace(' ', '_') for c in df.columns]
             return df
             
         except Exception as e:
-            logger.error(f"获取 {ticker} 日内数据失败: {e}")
+            logger.error(f"獲取 {ticker} 日內數據失敗: {e}")
             return pd.DataFrame()
     
     def fetch_reference_data(self, ticker: str) -> Dict[str, Any]:
         """
-        获取股票基本面参考数据
+        獲取股票基本面參考數據
         
-        返回字段：
-        - name: 公司名称
-        - sector: 行业分类
-        - industry: 细分行业
-        - market_cap: 总市值
-        - shares_outstanding: 流通股数
-        - beta: Beta系数
+        返回欄位：
+        - name: 公司名稱
+        - sector: 行業分類
+        - industry: 細分行業
+        - market_cap: 總市值
+        - shares_outstanding: 流通股數
+        - beta: Beta係數
         - pe_ratio: 市盈率
         - dividend_yield: 股息率
         - exchange: 上市交易所
         
-        参数:
-            ticker: 股票代码
+        參數:
+            ticker: 股票代碼
         
         返回:
             基本面信息字典
@@ -457,21 +440,21 @@ class YahooFetcher(DataFetcher):
             return ref_data
             
         except Exception as e:
-            logger.warning(f"获取 {ticker} 参考数据失败: {e}")
+            logger.warning(f"獲取 {ticker} 參考數據失敗: {e}")
             return {'ticker': ticker, 'error': str(e)}
     
     def fetch_dividends_and_splits(
         self, ticker: str
     ) -> Tuple[pd.Series, pd.Series]:
         """
-        获取分红和拆股历史
+        獲取分紅和拆股歷史
         
-        这对回测的复权处理至关重要：
-        - 分红(dividends): 现金分红会直接降低股价
-        - 拆股(stock splits): 会成倍改变股价和持仓数量
+        這對回測的復權處理至關重要：
+        - 分紅(dividends): 現金分紅會直接降低股價
+        - 拆股(stock splits): 會成倍改變股價和持倉數量
         
-        参数:
-            ticker: 股票代码
+        參數:
+            ticker: 股票代碼
         
         返回:
             (dividends_series, splits_series)
@@ -484,24 +467,24 @@ class YahooFetcher(DataFetcher):
             splits = stock.splits
             return dividends, splits
         except Exception as e:
-            logger.warning(f"获取 {ticker} 分红/拆股数据失败: {e}")
+            logger.warning(f"獲取 {ticker} 分紅/拆股數據失敗: {e}")
             return pd.Series(), pd.Series()
 
 
 # ============================================================================
-# Polygon.io 数据获取器（付费API）
+# Polygon.io 數據獲取器（付費API）
 # ============================================================================
 class PolygonFetcher(DataFetcher):
     """
-    基于Polygon.io的数据获取器
+    基於Polygon.io的數據獲取器
     
-    Polygon.io提供高质量的实时和历史美股数据：
-    - 实时Level-1/Level-2行情（WebSocket）
-    - 历史日线和分时数据（REST API）
-    - 参考数据、财报、分红等信息
+    Polygon.io提供高質量的實時和歷史美股數據：
+    - 實時Level-1/Level-2行情（WebSocket）
+    - 歷史日線和分時數據（REST API）
+    - 參考數據、財報、分紅等信息
     
-    需要付费API密钥，免费版有严格限制。
-    官网: https://polygon.io
+    需要付費API密鑰，免費版有嚴格限制。
+    官網: https://polygon.io
     """
     
     SOURCE_NAME = "PolygonIO"
@@ -510,19 +493,19 @@ class PolygonFetcher(DataFetcher):
     def __init__(self, config: DataSourceConfig):
         super().__init__(config)
         if not config.polygon_api_key:
-            raise ConfigurationError("Polygon.io API密钥未设置")
+            raise ConfigurationError("Polygon.io API密鑰未設置")
         self._api_key = config.polygon_api_key
     
     def _make_request(self, endpoint: str, params: dict = None) -> dict:
         """
-        向Polygon API发送GET请求
+        向Polygon API發送GET請求
         
-        参数:
-            endpoint: API端点路径（如 '/v2/aggs/ticker/AAPL/range/1/day/2023-01-01/2023-12-31'）
-            params: 额外的查询参数
+        參數:
+            endpoint: API端點路徑（如 '/v2/aggs/ticker/AAPL/range/1/day/2023-01-01/2023-12-31'）
+            params: 額外的查詢參數
         
         返回:
-            JSON响应字典
+            JSON響應字典
         """
         self._rate_limit()
         
@@ -538,7 +521,7 @@ class PolygonFetcher(DataFetcher):
             
             if data.get('status') == 'ERROR':
                 raise DataSourceError(
-                    f"Polygon API返回错误: {data.get('error', '未知错误')}",
+                    f"Polygon API返回錯誤: {data.get('error', '未知錯誤')}",
                     {'endpoint': endpoint}
                 )
             
@@ -546,7 +529,7 @@ class PolygonFetcher(DataFetcher):
             
         except requests.exceptions.RequestException as e:
             raise DataSourceError(
-                f"Polygon API请求失败: {str(e)}",
+                f"Polygon API請求失敗: {str(e)}",
                 {'endpoint': endpoint}
             )
     
@@ -558,16 +541,16 @@ class PolygonFetcher(DataFetcher):
         auto_adjust: bool = True
     ) -> pd.DataFrame:
         """
-        通过Polygon.io获取日线OHLCV数据
+        通過Polygon.io獲取日線OHLCV數據
         
-        Polygon使用 adjusted=true 参数返回复权数据。
-        复权方式为 forward split adjustment（前向分股复权）。
+        Polygon使用 adjusted=true 參數返回復權數據。
+        復權方式為 forward split adjustment（前向分股復權）。
         """
         endpoint = f"/v2/aggs/ticker/{ticker}/range/1/day/{start_date}/{end_date}"
         params = {
             'adjusted': str(auto_adjust).lower(),
             'sort': 'asc',
-            'limit': 50000,  # 单次最多50000条
+            'limit': 50000,  # 單次最多50000條
         }
         
         data = self._make_request(endpoint, params)
@@ -575,11 +558,11 @@ class PolygonFetcher(DataFetcher):
         results = data.get('results', [])
         if not results:
             raise DataQualityError(
-                f"Polygon未返回{ticker}在{start_date}~{end_date}的数据",
+                f"Polygon未返回{ticker}在{start_date}~{end_date}的數據",
                 {'ticker': ticker}
             )
         
-        # 转换为DataFrame
+        # 轉換為DataFrame
         df = pd.DataFrame(results)
         df['t'] = pd.to_datetime(df['t'], unit='ms')
         df = df.rename(columns={
@@ -598,7 +581,7 @@ class PolygonFetcher(DataFetcher):
         interval: str = '5min',
         days_back: int = 5
     ) -> pd.DataFrame:
-        """获取日内分时数据"""
+        """獲取日內分時數據"""
         interval_map = {
             '1min': '1/minute', '5min': '5/minute',
             '15min': '15/minute', '30min': '30/minute',
@@ -627,7 +610,7 @@ class PolygonFetcher(DataFetcher):
         return df
     
     def fetch_reference_data(self, ticker: str) -> Dict[str, Any]:
-        """获取股票参考数据"""
+        """獲取股票參考數據"""
         endpoint = f"/v3/reference/tickers/{ticker}"
         data = self._make_request(endpoint)
         result = data.get('results', {})
@@ -644,25 +627,25 @@ class PolygonFetcher(DataFetcher):
 
 
 # ============================================================================
-# 工厂函数：根据配置创建数据获取器
+# 工廠函數：根據配置創建數據獲取器
 # ============================================================================
 def create_fetcher(config: DataSourceConfig) -> DataFetcher:
     """
-    数据获取器工厂函数
+    數據獲取器工廠函數
     
-    根据配置选择数据源，优先级：
-    1. 如果配置了Polygon API密钥且启用了Polygon → PolygonFetcher
-    2. 否则 → YahooFetcher（免费）
+    根據配置選擇數據源，優先級：
+    1. 如果配置了Polygon API密鑰且啟用了Polygon → PolygonFetcher
+    2. 否則 → YahooFetcher（免費）
     
-    参数:
-        config: 数据源配置
+    參數:
+        config: 數據源配置
     
     返回:
-        对应的DataFetcher实现
+        對應的DataFetcher實現
     """
     if config.polygon_enabled and config.polygon_api_key:
-        logger.info("使用 Polygon.io 作为数据源")
+        logger.info("使用 Polygon.io 作為數據源")
         return PolygonFetcher(config)
     
-    logger.info("使用 Yahoo Finance 作为数据源")
+    logger.info("使用 Yahoo Finance 作為數據源")
     return YahooFetcher(config)

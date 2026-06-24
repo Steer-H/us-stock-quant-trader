@@ -1,17 +1,4 @@
-"""
-在线模拟交易系统 - Web服务器
-
-Flask Web应用，提供：
-- 实时交易仪表盘页面 (localhost:8080)
-- RESTful API 数据接口（每秒刷新）
-- 后台模拟交易引擎（每秒刷新）
-- 开盘后才启动交易逻辑
-
-启动方式:
-    python live_trading/web_server.py
-    或
-    python main.py web
-"""
+"""Live trading web server. Flask app serving dashboard at localhost:8080."""
 
 import sys
 import time
@@ -24,8 +11,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # macOS Python 3.9 werkzeug selectors bug fix
-# werkzeug 在 macOS + Python 3.9 上报 "changelist must be an iterable of select.kevent objects"
-# 用 PollSelector 替换 DefaultSelector 以消除此错误
+# werkzeug 在 macOS + Python 3.9 上報 "changelist must be an iterable of select.kevent objects"
+# 用 PollSelector 替換 DefaultSelector 以消除此錯誤
 import selectors
 if hasattr(selectors, 'PollSelector'):
     _Selector = selectors.PollSelector
@@ -59,17 +46,17 @@ app = Flask(__name__,
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 # socketio removed - using polling mode
 
-# 全局引擎实例
+# 全局引擎實例
 _clock = MarketClock()
 _portfolio = PortfolioManager(initial_capital=100_000.0)
 _benchmark = BenchmarkTracker(initial_capital=100_000.0)
 _accuracy = AccuracyTracker(rolling_window=50)
 _predictor = RealtimePredictor(window_size=120)
-# ML模型推理（加载Transformer）
-_ml_inference: ModelInference = None  # 延迟加载，避免阻塞启动
+# ML模型推理（加載Transformer）
+_ml_inference: ModelInference = None  # 延遲加載，避免阻塞啟動
 _ml_ready: bool = False
 _risk_mgr = RiskManager(trading_config)
-_leverage_engine = LeverageEngine()  # 动态杠杆引擎
+_leverage_engine = LeverageEngine()  # 動態槓桿引擎
 _risk_checks_passed: int = 0
 _risk_checks_failed: int = 0
 
@@ -79,86 +66,86 @@ _iteration_count: int = 0
 _engine_running: bool = False
 _engine_thread: threading.Thread = None
 
-# 是否已开盘（开盘后才开始交易）
+# 是否已開盤（開盤後才開始交易）
 _market_opened: bool = False
-# 是否已建仓
+# 是否已建倉
 _positions_initialized: bool = False
 
 # ═══════════════════════════════════════════════════════════════
-# 数据延迟与精度监控
+# 數據延遲與精度監控
 # ═══════════════════════════════════════════════════════════════
-_last_price_update: str = ''       # 最后一次价格更新时间
-_data_source: str = 'Yahoo Finance (启动中)'    # 数据源: simulated / yahoo / akshare
-_data_latency_ms: float = 0.0      # 数据延迟(毫秒)
-_price_update_count: int = 0       # 价格更新总次数
-_price_is_stale: bool = True       # 价格数据是否过期
-_price_data_age_s: float = 999.0  # 数据已存在秒数(上次更新距今)
+_last_price_update: str = ''       # 最後一次價格更新時間
+_data_source: str = 'Yahoo Finance (啟動中)'    # 數據源: simulated / yahoo / akshare
+_data_latency_ms: float = 0.0      # 數據延遲(毫秒)
+_price_update_count: int = 0       # 價格更新總次數
+_price_is_stale: bool = True       # 價格數據是否過期
+_price_data_age_s: float = 999.0  # 數據已存在秒數(上次更新距今)
 # ═══════════════════════════════════════════════════════════
-# K线缓存
+# K線緩存
 # ═══════════════════════════════════════════════════════════
 _kline_cache: dict = {}         # {ticker: [{time,open,high,low,close,volume}]}
-_last_kline_fetch: float = 0.0  # 上次K线抓取时间
-_kline_fetch_interval: int = 300  # 每5分钟更新一次K线
+_last_kline_fetch: float = 0.0  # 上次K線抓取時間
+_kline_fetch_interval: int = 300  # 每5分鐘更新一次K線
 
 # ═══════════════════════════════════════════════════════════════
-# 交易指令追踪
+# 交易指令追蹤
 # ═══════════════════════════════════════════════════════════════
 _recent_signals: list = []         # 最近交易指令 [{time, action, ticker, qty, price, reason}]
-_prediction_iters: dict = {}       # {prediction_id: iteration} 用于超时确认
+_prediction_iters: dict = {}       # {prediction_id: iteration} 用於超時確認
 
 TRACKED_TICKERS = [
-    # 科技七巨头
+    # 科技七巨頭
     'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA',
-    # 软件/SaaS
+    # 軟體/SaaS
     'NFLX', 'ADBE', 'CRM', 'NOW', 'ORCL',
     # 金融
     'JPM', 'V', 'MA', 'BAC',
-    # 消费
+    # 消費
     'WMT', 'HD', 'NKE', 'SBUX', 'UBER',
-    # 芯片/半导体
+    # 晶片/半導體
     'AVGO', 'AMD', 'INTC', 'QCOM', 'TXN',
-    # 光模块/光通信 (高波动)
+    # 光模塊/光通信 (高波動)
     'AAOI', 'COHR', 'LITE', 'FN',
-    # 存储 (高波动)
+    # 存儲 (高波動)
     'WDC', 'STX', 'NTAP',
-    # 数据中心芯片 (高波动)
+    # 數據中心晶片 (高波動)
     'MRVL', 'MU',
-    # 半导体设备 (高波动)
+    # 半導體設備 (高波動)
     'LRCX', 'AMAT', 'KLAC',
-    # EDA软件 (高波动)
+    # EDA軟體 (高波動)
     'SNPS', 'CDNS',
 ]
 
 # ═══════════════════════════════════════════════════════════════
-# Yahoo Finance 实时数据抓取
+# Yahoo Finance 實時數據抓取
 # ═══════════════════════════════════════════════════════════════
-_yahoo_fetch_interval: int = 30      # 基础抓取间隔（秒）
+_yahoo_fetch_interval: int = 30      # 基礎抓取間隔（秒）
 
-# 按市场时段分层抓取间隔（优化版）
+# 按市場時段分層抓取間隔（優化版）
 YAHOO_INTERVALS = {
     'REGULAR': 12,       # 正常交易：12秒（快速刷新）
-    'PRE_MARKET': 60,    # 盘前：1分钟
-    'AFTER_HOURS': 60,   # 盘后：1分钟
-    'CLOSED': 60,        # 闭市：1分钟
+    'PRE_MARKET': 60,    # 盤前：1分鐘
+    'AFTER_HOURS': 60,   # 盤後：1分鐘
+    'CLOSED': 60,        # 閉市：1分鐘
 }
-_last_yahoo_fetch: float = 0.0       # 上次抓取时间戳
-_first_yahoo_fetch_done: bool = False  # 启动后首次抓取标志
+_last_yahoo_fetch: float = 0.0       # 上次抓取時間戳
+_first_yahoo_fetch_done: bool = False  # 啟動後首次抓取標誌
 _yahoo_fetch_success: bool = False   # 上次抓取是否成功
-_yahoo_error_count: int = 0          # 连续失败次数
-_yahoo_session = None               # 持久HTTP会话（v7 API用）
+_yahoo_error_count: int = 0          # 連續失敗次數
+_yahoo_session = None               # 持久HTTP會話（v7 API用）
 _yahoo_crumb: str = None            # Yahoo API crumb
-_yahoo_crumb_ts: float = 0.0        # crumb获取时间戳
+_yahoo_crumb_ts: float = 0.0        # crumb獲取時間戳
 _v7_active: bool = False            # v7 API是否可用
 
 
 def fetch_kline_data(ticker: str, period: str = "1d", interval: str = "5m"):
     """
-    获取单只股票的K线数据
+    獲取單只股票的K線數據
     
-    参数:
-        ticker: 股票代码
-        period: 时间范围 (1d/5d/1mo/3mo)
-        interval: K线周期 (1m/5m/15m/30m/1h/1d)
+    參數:
+        ticker: 股票代碼
+        period: 時間範圍 (1d/5d/1mo/3mo)
+        interval: K線周期 (1m/5m/15m/30m/1h/1d)
     
     返回:
         [{time, open, high, low, close, volume}, ...] 或空列表
@@ -167,7 +154,7 @@ def fetch_kline_data(ticker: str, period: str = "1d", interval: str = "5m"):
     
     cache_key = f"{ticker}_{period}_{interval}"
     
-    # 检查缓存
+    # 檢查緩存
     now = time.time()
     if cache_key in _kline_cache:
         cached = _kline_cache[cache_key]
@@ -196,11 +183,11 @@ def fetch_kline_data(ticker: str, period: str = "1d", interval: str = "5m"):
         _kline_cache[cache_key] = {"data": candles, "_ts": now}
         return candles
     except Exception as e:
-        logger.debug(f"K线数据获取失败 {ticker}: {e}")
+        logger.debug(f"K線數據獲取失敗 {ticker}: {e}")
         return []
 
 def fetch_yahoo_prices():
-    """从 Yahoo Finance 抓取实时价格（v7批量API，单次请求获取全部股票）"""
+    """從 Yahoo Finance 抓取實時價格（v7批量API，單次請求獲取全部股票）"""
     global _last_yahoo_fetch, _yahoo_fetch_success, _yahoo_error_count
     global _yahoo_fetch_interval, _data_source, _first_yahoo_fetch_done
     global _yahoo_session, _yahoo_crumb, _yahoo_crumb_ts, _v7_active
@@ -238,7 +225,7 @@ def fetch_yahoo_prices():
         except Exception:
             _yahoo_crumb = None
 
-    # ── 方案1: v7 批量报价API（单请求，<0.2s） ──
+    # ── 方案1: v7 批量報價API（單請求，<0.2s） ──
     if _yahoo_crumb:
         try:
             symbols = ','.join(all_tickers)
@@ -264,7 +251,7 @@ def fetch_yahoo_prices():
         except Exception:
             _yahoo_crumb = None  # crumb失效，下次刷新
 
-    # ── 方案2: fast_info 并行回退（6 workers, 8s超时） ──
+    # ── 方案2: fast_info 並行回退（6 workers, 8s超時） ──
     try:
         dl = [t for t in all_tickers if t not in prices]
 
@@ -308,30 +295,30 @@ def fetch_yahoo_prices():
 
 def calculate_commission(trade_value: float, quantity: int, side: str = 'BUY') -> float:
     """
-    蚂蚁银行澳门 美股佣金计算
+    螞蟻銀行澳門 美股佣金計算
     
-    费用组成:
-    - 佣金: 0.05% × 成交金额, 最低 USD 2.00
-    - SEC费(仅卖出): 0.0008% × 成交金额
-    - TAF费(仅卖出): USD 0.00013 × 股数
+    費用組成:
+    - 佣金: 0.05% × 成交金額, 最低 USD 2.00
+    - SEC費(僅賣出): 0.0008% × 成交金額
+    - TAF費(僅賣出): USD 0.00013 × 股數
     
-    参数:
-        trade_value: 成交金额 (price × quantity)
-        quantity: 股数
+    參數:
+        trade_value: 成交金額 (price × quantity)
+        quantity: 股數
         side: 'BUY' 或 'SELL'
     
     返回:
-        总佣金(USD)
+        總佣金(USD)
     """
-    # 基础佣金: 0.05%, 最低$2.00
+    # 基礎佣金: 0.05%, 最低$2.00
     base_commission = max(trade_value * 0.0005, 2.00)
     
     total = base_commission
     
     if side == 'SELL':
-        # SEC费用: 0.0008% × 成交金额
+        # SEC費用: 0.0008% × 成交金額
         sec_fee = max(trade_value * 0.000008, 0.01)
-        # TAF费用: $0.00013 × 股数
+        # TAF費用: $0.00013 × 股數
         taf_fee = max(quantity * 0.00013, 0.01)
         total += sec_fee + taf_fee
     
@@ -339,18 +326,18 @@ def calculate_commission(trade_value: float, quantity: int, side: str = 'BUY') -
 
 
 # ═══════════════════════════════════════════════════════════════
-# 激进短线交易参数
+# 激進短線交易參數
 # ═══════════════════════════════════════════════════════════════
-TRADE_CHECK_INTERVAL = 60      # 每60秒检查一次交易信号(原300秒)
+TRADE_CHECK_INTERVAL = 60      # 每60秒檢查一次交易信號(原300秒)
 
 # Yahoo Finance 抓取配置
 
-PROFIT_TAKE_THRESHOLD = 0.03   # 止盈阈值3%(原10%)
-STOP_LOSS_THRESHOLD = -0.04    # 止损阈值-4%(原-8%)
-MAX_POSITION_HOLD_TIME = 30    # 最大持仓时间(分钟),超时强制平仓
-REENTRY_COOLDOWN = 5           # 卖出后冷却时间(分钟)
-POSITION_MAX_PCT = 0.08        # 单只股票最大仓位8%
-PREDICTIVE_SELL_THRESHOLD = 0.55  # 模型预测准确率>55%时触发预测卖出
+PROFIT_TAKE_THRESHOLD = 0.03   # 止盈閾值3%(原10%)
+STOP_LOSS_THRESHOLD = -0.04    # 止損閾值-4%(原-8%)
+MAX_POSITION_HOLD_TIME = 30    # 最大持倉時間(分鐘),超時強制平倉
+REENTRY_COOLDOWN = 5           # 賣出後冷卻時間(分鐘)
+POSITION_MAX_PCT = 0.08        # 單只股票最大倉位8%
+PREDICTIVE_SELL_THRESHOLD = 0.55  # 模型預測準確率>55%時觸發預測賣出
 
 # Leverage Trading Parameters
 MAX_LEVERAGE = 2.0
@@ -359,19 +346,19 @@ MAX_POSITION_PCT_LEVERAGED = 0.12
 LEVERAGE_STOP_LOSS = -0.025
 DRAWDOWN_DELEVERAGE = 0.10
 
-# 持仓计时器: {ticker: buy_iteration}
+# 持倉計時器: {ticker: buy_iteration}
 _position_entry_time: dict = {}
-# 卖出冷却: {ticker: sell_iteration}
+# 賣出冷卻: {ticker: sell_iteration}
 _position_sell_cooldown: dict = {}
 
-# 状态持久化: 启动时尝试恢复上次保存的状态
+# 狀態持久化: 啟動時嘗試恢復上次保存的狀態
 _saved_state = load_state()
 if _saved_state:
     try:
         deserialize_portfolio(_portfolio, _saved_state['portfolio'])
         deserialize_accuracy(_accuracy, _saved_state['accuracy'])
         deserialize_benchmark(_benchmark, _saved_state['benchmark'])
-        # 恢复统计预测器状态
+        # 恢復統計預測器狀態
         pp = _saved_state.get('predictor')
         if pp:
             _predictor = RealtimePredictor.from_dict(pp)
@@ -382,40 +369,40 @@ if _saved_state:
         _positions_initialized = g.get('positions_initialized', False)
         _ml_ready = g.get('ml_ready', False)
         _market_opened = g.get('market_opened', False)
-        # 恢复持仓计时器和冷却
+        # 恢復持倉計時器和冷卻
         _position_entry_time.update(g.get('position_entry_time', {}))
-        # 恢复预测迭代映射
+        # 恢復預測迭代映射
         _prediction_iters.update(g.get('prediction_iters', {}))
         _position_sell_cooldown.update(g.get('position_sell_cooldown', {}))
-        # 恢复杠杆引擎状态
+        # 恢復槓桿引擎狀態
         if g.get('leverage_engine'):
             _leverage_engine = LeverageEngine.from_dict(g['leverage_engine'])
-        # 恢复交易信号
+        # 恢復交易信號
         sigs = g.get('recent_signals', [])
         if sigs:
             _recent_signals.extend(sigs)
         saved_at = _saved_state.get('saved_at', '?')
-        print(f'  ✅ 已恢复交易状态 (保存于 {saved_at})')
-        print(f'     现金: ${_portfolio.cash:,.2f} | 持仓: {len(_portfolio.positions)}只')
-        print(f'     预测: {len(_accuracy.predictions)}条 | 交易: {len(_portfolio.trade_history)}笔')
-        print(f'     迭代: {_iteration_count} | 建仓: {_positions_initialized}')
+        print(f'  ✅ 已恢復交易狀態 (保存於 {saved_at})')
+        print(f'     現金: ${_portfolio.cash:,.2f} | 持倉: {len(_portfolio.positions)}只')
+        print(f'     預測: {len(_accuracy.predictions)}條 | 交易: {len(_portfolio.trade_history)}筆')
+        print(f'     迭代: {_iteration_count} | 建倉: {_positions_initialized}')
     except Exception as e:
-        print(f'  ⚠️ 状态恢复失败: {e}，使用全新状态')
+        print(f'  ⚠️ 狀態恢復失敗: {e}，使用全新狀態')
 else:
-    print('  🆕 使用全新交易状态')
+    print('  🆕 使用全新交易狀態')
 
 # ═══════════════════════════════════════════════════════════════
-# 基准初始化：拉取纳指历史数据用于曲线对比
+# 基準初始化：拉取納指歷史數據用於曲線對比
 # ═══════════════════════════════════════════════════════════════
 if _benchmark.nasdaq_equity_curve.empty:
-    print('  📊 拉取纳指历史数据用于基准曲线...')
+    print('  📊 拉取納指歷史數據用於基準曲線...')
     ok = _benchmark.fetch_nasdaq_history('6mo')
     if ok:
-        print(f'  ✅ 纳指基准已初始化 ({len(_benchmark.nasdaq_equity_curve)} 数据点)')
+        print(f'  ✅ 納指基準已初始化 ({len(_benchmark.nasdaq_equity_curve)} 數據點)')
     else:
-        print('  ⚠️ 纳指历史数据拉取失败，基准曲线将在交易开始后逐步建立')
+        print('  ⚠️ 納指歷史數據拉取失敗，基準曲線將在交易開始後逐步建立')
 
-# 初始建仓配置
+# 初始建倉配置
 INITIAL_POSITIONS = {
     'AAPL':  {'qty': 17, 'cost': 210},
     'MSFT':  {'qty': 8, 'cost': 430},
@@ -443,35 +430,35 @@ INITIAL_POSITIONS = {
     'QCOM': {'qty': 8, 'cost': 220},
     'TXN':  {'qty': 8, 'cost': 195},
     'UBER': {'qty': 15, 'cost': 72},
-    # 光模块/光通信
+    # 光模塊/光通信
     'AAOI': {'qty': 30, 'cost': 15},
     'COHR': {'qty': 8, 'cost': 100},
     'LITE': {'qty': 15, 'cost': 85},
     'FN':   {'qty': 7, 'cost': 220},
-    # 存储
+    # 存儲
     'WDC':  {'qty': 10, 'cost': 70},
     'STX':  {'qty': 11, 'cost': 105},
     'NTAP': {'qty': 9, 'cost': 120},
-    # 数据中心芯片
+    # 數據中心晶片
     'MRVL': {'qty': 13, 'cost': 110},
     'MU':   {'qty': 10, 'cost': 140},
-    # 半导体设备
+    # 半導體設備
     'LRCX': {'qty': 6, 'cost': 95},
     'AMAT': {'qty': 8, 'cost': 230},
     'KLAC': {'qty': 5, 'cost': 800},
-    # EDA软件
+    # EDA軟體
     'SNPS': {'qty': 5, 'cost': 560},
     'CDNS': {'qty': 5, 'cost': 310},
 }
 
 
 def init_positions():
-    """初始化建仓 - 使用Yahoo实时价格作为成本价"""
+    """初始化建倉 - 使用Yahoo實時價格作為成本價"""
     global _positions_initialized, _portfolio, _current_prices, _data_source, _last_price_update
     
-    # 已有持仓(从持久化恢复): 跳过建仓
+    # 已有持倉(從持久化恢復): 跳過建倉
     if len(_portfolio.positions) > 0:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 恢复持仓: {len(_portfolio.positions)}只, 跳过建仓")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 恢復持倉: {len(_portfolio.positions)}只, 跳過建倉")
         for ticker in list(_portfolio.positions.keys()):
             if ticker not in _current_prices:
                 _current_prices[ticker] = _portfolio.positions[ticker].avg_cost
@@ -480,12 +467,12 @@ def init_positions():
         _positions_initialized = True
         return
     
-    # 先从Yahoo获取实时价格作为建仓成本（批量下载避免限流）
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📡 获取Yahoo实时价格用于建仓...", flush=True)
+    # 先從Yahoo獲取實時價格作為建倉成本（批量下載避免限流）
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📡 獲取Yahoo實時價格用於建倉...", flush=True)
     
     real_prices = {}
     
-    # 方式1: 尝试批量下载（单次请求）
+    # 方式1: 嘗試批量下載（單次請求）
     try:
         batch_tickers = list(INITIAL_POSITIONS.keys())
         data = yf.download(batch_tickers, period='1d', interval='1m', progress=False, threads=False)
@@ -497,17 +484,17 @@ def init_positions():
                     if len(prices_col) > 0:
                         real_prices[ticker] = float(prices_col.iloc[-1])
             if real_prices:
-                print(f"  批量获取: {len(real_prices)}/{len(batch_tickers)} 只", flush=True)
+                print(f"  批量獲取: {len(real_prices)}/{len(batch_tickers)} 只", flush=True)
     except Exception as e:
-        print(f"  批量下载失败: {e}", flush=True)
+        print(f"  批量下載失敗: {e}", flush=True)
     
-    # 方式2: 对失败的逐个重试
+    # 方式2: 對失敗的逐個重試
     for ticker in INITIAL_POSITIONS:
         if ticker in real_prices:
             continue
         try:
             tk = yf.Ticker(ticker)
-            # 多数据源fallback
+            # 多數據源fallback
             p = (tk.fast_info.get('lastPrice') or 
                  tk.fast_info.get('regularMarketPrice') or
                  tk.fast_info.get('previousClose'))
@@ -520,7 +507,7 @@ def init_positions():
         except Exception:
             pass
     
-    # 获取纳指价格
+    # 獲取納指價格
     try:
         ix = yf.Ticker('^IXIC')
         ix_p = ix.fast_info.get('lastPrice') or ix.fast_info.get('regularMarketPrice') or 18000
@@ -530,36 +517,36 @@ def init_positions():
         _current_prices['^IXIC'] = 18000.0
     
     if len(real_prices) < 5:
-        # Yahoo不可用: 回退到预设价格
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Yahoo价格不足, 使用预设价格")
+        # Yahoo不可用: 回退到預設價格
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Yahoo價格不足, 使用預設價格")
         for ticker, info in INITIAL_POSITIONS.items():
             real_prices[ticker] = info['cost']
-        _data_source = 'fallback (预设价格)'
+        _data_source = 'fallback (預設價格)'
     else:
-        _data_source = 'Yahoo Finance (实时)'
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ 获取到 {len(real_prices)} 只实时价格")
+        _data_source = 'Yahoo Finance (實時)'
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ 獲取到 {len(real_prices)} 只實時價格")
     
-    # 用真实价格建仓, 调整数量以匹配初始资金分配
-    # 总资金80%用于建仓，20%留作短线交易现金
+    # 用真實價格建倉, 調整數量以匹配初始資金分配
+    # 總資金80%用於建倉，20%留作短線交易現金
     trading_cash = 100000.0 * 0.20
     investable = 100000.0 - trading_cash
-    cash_per_stock = investable / len(INITIAL_POSITIONS)  # 每只约$10,000
+    cash_per_stock = investable / len(INITIAL_POSITIONS)  # 每隻約$10,000
     total_commission = 0
     
     for ticker, info in INITIAL_POSITIONS.items():
         price = real_prices.get(ticker, info['cost'])
-        qty = max(1, int(cash_per_stock / price))  # 按价格计算股数
+        qty = max(1, int(cash_per_stock / price))  # 按價格計算股數
         trade_val = qty * price
         comm = calculate_commission(trade_val, qty, 'BUY')
         total_commission += comm
         
-        _portfolio.execute_buy(ticker, qty, price, commission=comm, reason='开盘建仓')
+        _portfolio.execute_buy(ticker, qty, price, commission=comm, reason='開盤建倉')
         _current_prices[ticker] = price
         _recent_signals.append({
             'time': datetime.now().strftime('%H:%M:%S'),
             'action': 'BUY', 'ticker': ticker,
             'qty': qty, 'price': round(price, 2),
-            'reason': '开盘建仓(Yahoo价格)',
+            'reason': '開盤建倉(Yahoo價格)',
         })
         print(f"  {ticker}: {qty}股 @ ${price:.2f} (佣金${comm:.2f})", flush=True)
     
@@ -567,7 +554,7 @@ def init_positions():
     if '^IXIC' not in _current_prices:
         _current_prices['^IXIC'] = 18000.0
     
-    # 设置纳指基准（如果 fetch_nasdaq_history 还未设置）
+    # 設置納指基準（如果 fetch_nasdaq_history 還未設置）
     if _benchmark.nasdaq_start_price == 0:
         nasdaq_price = _current_prices.get('^IXIC', 18000.0)
         _benchmark.nasdaq_start_price = nasdaq_price
@@ -575,107 +562,107 @@ def init_positions():
     
     _positions_initialized = True
     total_invested = 100000.0 - _portfolio.cash - total_commission
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 建仓完成: {len(_portfolio.positions)}只, " +
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 建倉完成: {len(_portfolio.positions)}只, " +
           f"投入${total_invested:,.0f}, 佣金${total_commission:.2f}", flush=True)
 
 
 def tick_engine():
-    """引擎一个tick（模拟价格波动+交易决策）"""
+    """引擎一個tick（模擬價格波動+交易決策）"""
     global _current_prices, _previous_prices, _iteration_count
     global _market_opened, _positions_initialized, _recent_signals
     
     _iteration_count += 1
     
-    # 检查市场是否开盘
+    # 檢查市場是否開盤
     status, _ = _clock.get_status()
     is_open_now = (status == MarketStatus.REGULAR_HOURS)
-    # 是否为正常交易时段（仅此时段允许买卖交易）
+    # 是否為正常交易時段（僅此時段允許買賣交易）
     is_trading_session = is_open_now
     
-    # 开盘瞬间执行建仓
+    # 開盤瞬間執行建倉
     if is_trading_session and not _positions_initialized:
         _market_opened = True
         init_positions()
     
     # ═══════════════════════════════════════════════════════════
     # ═══════════════════════════════════════════════════════════
-    # 价格更新：始终尝试获取Yahoo价格（即使未建仓），确保数据新鲜度
+    # 價格更新：始終嘗試獲取Yahoo價格（即使未建倉），確保數據新鮮度
     # ═══════════════════════════════════════════════════════════
     global _last_price_update, _price_update_count, _data_latency_ms
     global _price_is_stale, _data_source, _price_data_age_s
     _previous_prices = dict(_current_prices)
     
-    # 尝试从 Yahoo Finance 抓取真实价格
-    # 启动后首次无条件尝试（_last_yahoo_fetch=0 保证首次通过）
+    # 嘗試從 Yahoo Finance 抓取真實價格
+    # 啟動後首次無條件嘗試（_last_yahoo_fetch=0 保證首次通過）
     yahoo_prices, yahoo_latency = fetch_yahoo_prices()
     
     if yahoo_prices:
-        # 使用Yahoo真实价格
+        # 使用Yahoo真實價格
         for ticker, price in yahoo_prices.items():
             _current_prices[ticker] = price
         _data_latency_ms = round(yahoo_latency, 2)
-        _data_source = 'Yahoo Finance (实时)'
+        _data_source = 'Yahoo Finance (實時)'
         _last_price_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         _price_update_count += 1
         _price_is_stale = False; _data_is_stale = False
-        _price_data_age_s = 0  # 数据新鲜
+        _price_data_age_s = 0  # 數據新鮮
     else:
-        # Yahoo未返回新数据：可能是间隔未到，或请求失败
-        # 更新数据年龄（距上次更新秒数）
+        # Yahoo未返回新數據：可能是間隔未到，或請求失敗
+        # 更新數據年齡（距上次更新秒數）
         if _last_price_update:
             try:
                 last_dt = datetime.strptime(_last_price_update[:19], '%Y-%m-%d %H:%M:%S')
                 _price_data_age_s = (datetime.now() - last_dt).total_seconds()
             except Exception:
                 pass
-        # 更新 _data_latency_ms 反映数据新鲜度（距上次成功更新的毫秒数）
+        # 更新 _data_latency_ms 反映數據新鮮度（距上次成功更新的毫秒數）
         if _price_data_age_s > 0 and _price_data_age_s < 999:
             _data_latency_ms = _price_data_age_s * 1000
         
-        # 仅当连续失败超过阈值时才标记数据为过期
+        # 僅當連續失敗超過閾值時才標記數據為過期
         if _yahoo_error_count > 3:
             _price_is_stale = True; _data_is_stale = True
-            _data_source = f'离线 (Yahoo不可用, 数据已过期){" [v7回退]" if _v7_active else ""}'
+            _data_source = f'離線 (Yahoo不可用, 數據已過期){" [v7回退]" if _v7_active else ""}'
         elif _yahoo_error_count > 0:
-            # 有失败但未超过阈值：保持当前状态，来源标记为等待重连
-            _price_is_stale = False  # 上次数据仍有效，不标记过期
-            _data_source = f'Yahoo Finance (部分失败, 上次数据仍有效){" [v7]" if _v7_active else ""}'
+            # 有失敗但未超過閾值：保持當前狀態，來源標記為等待重連
+            _price_is_stale = False  # 上次數據仍有效，不標記過期
+            _data_source = f'Yahoo Finance (部分失敗, 上次數據仍有效){" [v7]" if _v7_active else ""}'
         else:
-            # 完全正常：仅因间隔未到，保持现有数据
-            _price_is_stale = False  # 上次数据仍然有效
-            # 计算数据年龄用于前端展示
+            # 完全正常：僅因間隔未到，保持現有數據
+            _price_is_stale = False  # 上次數據仍然有效
+            # 計算數據年齡用於前端展示
             age_s = int(_price_data_age_s) if _price_data_age_s < 999 else 0
-            _data_source = f'Yahoo Finance (缓存{" [v7]" if _v7_active else ""}, {age_s}s前)'
+            _data_source = f'Yahoo Finance (緩存{" [v7]" if _v7_active else ""}, {age_s}s前)'
     
-    # 未开盘且未建仓：不执行交易操作（但价格已更新供前端展示）
+    # 未開盤且未建倉：不執行交易操作（但價格已更新供前端展示）
     if not _positions_initialized:
         return
     
-    # 更新持仓市值 & 喂入统计预测器
+    # 更新持倉市值 & 餵入統計預測器
     prices_for_portfolio = {t: p for t, p in _current_prices.items() if t != '^IXIC'}
     _portfolio.update_prices(prices_for_portfolio)
-    # 喂入价格到统计预测器
+    # 餵入價格到統計預測器
     for ticker, price in _current_prices.items():
         if ticker != '^IXIC':
             _predictor.update_price(ticker, price)
     
-    # 更新基准
+    # 更新基準
     _benchmark.update(_current_prices['^IXIC'], _portfolio.get_total_equity())
     
     # Daily interest accrual for borrowed funds
     _portfolio.accrue_interest()
     
     # ═══════════════════════════════════════════════════════════
-    # 交易会话门控：仅在正常交易时段执行买卖
+    # 交易會話門控：僅在正常交易時段執行買賣
     # ═══════════════════════════════════════════════════════════
     if not is_trading_session:
-        return  # 休市时不执行任何交易，仅更新价格供展示
+        return  # 休市時不執行任何交易，僅更新價格供展示
     
-    # 价格数据过期时跳过交易决策（避免基于伪造数据交易）
+    # 價格數據過期時跳過交易決策（避免基於偽造數據交易）
     if _price_is_stale:
         return
     
-    # 激进短线交易逻辑 (每60秒检查)
+    # 激進短線交易邏輯 (每60秒檢查)
     if _iteration_count % TRADE_CHECK_INTERVAL == 0 and _portfolio.cash > 1000:
         current_equity = _portfolio.get_total_equity()
         
@@ -687,30 +674,30 @@ def tick_engine():
             pnl_pct = pos.unrealized_pnl_pct
             hold_minutes = (_iteration_count - _position_entry_time.get(ticker, _iteration_count)) / 60
             
-            # 使用已更新的持仓数据
+            # 使用已更新的持倉數據
             
             should_sell = False
             sell_reason = ''
             
-            # 条件1: 止盈 (盈利≥3%时80%概率卖出,锁定利润)
-            # 使用确定性哈希避免随机数滥用，同时保持概率分散效果
+            # 條件1: 止盈 (盈利≥3%時80%概率賣出,鎖定利潤)
+            # 使用確定性哈希避免隨機數濫用，同時保持概率分散效果
             _tp_seed = int(hashlib.md5(f'{_iteration_count}:{ticker}:tp'.encode()).hexdigest()[:8], 16)
             if pnl_pct >= PROFIT_TAKE_THRESHOLD and (_tp_seed % 100) < 80:
                 should_sell = True
-                sell_reason = f'短线止盈({pnl_pct:.1%})'
+                sell_reason = f'短線止盈({pnl_pct:.1%})'
             
-            # 条件2: 止损 (杠杆-2.5%, 普通-4%)
+            # 條件2: 止損 (槓桿-2.5%, 普通-4%)
             effective_sl = LEVERAGE_STOP_LOSS if _portfolio.get_leverage_ratio() > 1.2 else STOP_LOSS_THRESHOLD
             if pnl_pct <= effective_sl:
                 _sl_seed = int(hashlib.md5(f"{_iteration_count}:{ticker}:sl".encode()).hexdigest()[:8], 16)
                 if (_sl_seed % 100) < 90:
                     should_sell = True
                     lev_tag = "[L]" if _portfolio.get_leverage_ratio() > 1.2 else ""
-                    sell_reason = f"止损({pnl_pct:.1%}){lev_tag}"
+                    sell_reason = f"止損({pnl_pct:.1%}){lev_tag}"
             
-            # 条件3: 预测性卖出 (模型预测下跌时50%概率减仓)
-            if not should_sell and pnl_pct < 0.01:  # 微利或微亏时更积极
-                # 使用ML模型或统计预测器判断是否卖出
+            # 條件3: 預測性賣出 (模型預測下跌時50%概率減倉)
+            if not should_sell and pnl_pct < 0.01:  # 微利或微虧時更積極
+                # 使用ML模型或統計預測器判斷是否賣出
                 ml_sell_signal = False
                 if _ml_ready and _ml_inference is not None:
                     ml_pred = _ml_inference.predict(ticker)
@@ -723,25 +710,25 @@ def tick_engine():
                 
                 if ml_sell_signal:
                     should_sell = True
-                    sell_reason = f'ML预测卖出'
+                    sell_reason = f'ML預測賣出'
             
-            # 条件4: 持仓超时强制平仓 (独立检查,不受上面条件阻塞)
+            # 條件4: 持倉超時強制平倉 (獨立檢查,不受上麵條件阻塞)
             if not should_sell and hold_minutes > MAX_POSITION_HOLD_TIME:
                 should_sell = True
-                sell_reason = f'超时平仓({hold_minutes:.0f}分钟)'
+                sell_reason = f'超時平倉({hold_minutes:.0f}分鐘)'
             
             if should_sell:
                 trade_val = pos.quantity * price
                 comm = calculate_commission(trade_val, pos.quantity, 'SELL')
                 _portfolio.execute_sell(ticker, pos.quantity, price,
                                         commission=comm, reason=sell_reason)
-                # 记录交易到杠杆引擎(绩效反馈)
+                # 記錄交易到槓桿引擎(績效反饋)
                 _leverage_engine.record_trade(
                     win=(pos.unrealized_pnl > 0),
                     pnl_pct=pos.unrealized_pnl_pct
                 )
                 _position_sell_cooldown[ticker] = _iteration_count
-                # 记录交易指令
+                # 記錄交易指令
                 _recent_signals.append({
                     'time': datetime.now().strftime('%H:%M:%S'),
                     'action': 'SELL',
@@ -752,22 +739,22 @@ def tick_engine():
                 })
                 if len(_recent_signals) > 50:
                     _recent_signals = _recent_signals[-50:]
-                break  # 每轮最多一笔卖出
+                break  # 每輪最多一筆賣出
         
-        # 买入逻辑: 在卖出后或现金充裕时寻找新机会
+        # 買入邏輯: 在賣出後或現金充裕時尋找新機會
         if _portfolio.cash > 5000:
-            # 获取不在冷却期且未持仓的候选股票
+            # 獲取不在冷卻期且未持倉的候選股票
             candidates = []
             for t in TRACKED_TICKERS:
                 if t in _portfolio.positions:
                     continue
                 cooldown_iter = _position_sell_cooldown.get(t, 0)
                 if (_iteration_count - cooldown_iter) < REENTRY_COOLDOWN * 60:
-                    continue  # 还在冷却期
+                    continue  # 還在冷卻期
                 candidates.append(t)
             
             if candidates:
-                # 根据"ML信号"选择最佳候选 (模拟:偏向于选择价格波动的)
+                # 根據"ML信號"選擇最佳候選 (模擬:偏向於選擇價格波動的)
                 best_ticker = None
                 best_signal = -1
                 
@@ -776,7 +763,7 @@ def tick_engine():
                     if price <= 0:
                         continue
                     
-                    # 优先使用Transformer模型，降级到统计预测器
+                    # 優先使用Transformer模型，降級到統計預測器
                     if _ml_ready and _ml_inference is not None:
                         ml_pred = _ml_inference.predict(t)
                         if ml_pred and ml_pred['direction'] == 1:
@@ -794,7 +781,7 @@ def tick_engine():
                 if best_ticker and best_signal > 0.005:
                     price = _current_prices[best_ticker]
                     
-                    # ── 动态杠杆引擎: 凯利公式+波动率+绩效+热度 ──
+                    # ── 動態槓桿引擎: 凱利公式+波動率+績效+熱度 ──
                     leverage, lev_detail = _leverage_engine.calculate(
                         confidence=best_signal if best_signal > 0.5 else 0.52,
                         ticker=best_ticker,
@@ -803,9 +790,9 @@ def tick_engine():
                         portfolio=_portfolio,
                         accuracy=_accuracy,
                     )
-                    # 如果杠杆低于0.5x, 机会不够好, 跳过
+                    # 如果槓桿低於0.5x, 機會不夠好, 跳過
                     if leverage < 0.5:
-                        best_ticker = None  # 放弃这次买入
+                        best_ticker = None  # 放棄這次買入
                     
                     max_pct = MAX_POSITION_PCT_LEVERAGED if leverage > 1.0 else POSITION_MAX_PCT
                     max_position_value = current_equity * max_pct
@@ -815,15 +802,15 @@ def tick_engine():
                     qty = min(max_qty_by_cash, max_qty_by_limit, 200 if leverage > 1.0 else 100)
                     
                     if qty > 0:
-                        # 风控检查
+                        # 風控檢查
                         if not _risk_mgr.in_trade.is_paused:
                             trade_val = qty * price
                             comm = calculate_commission(trade_val, qty, 'BUY')
-                            buy_reason = f'ML{leverage}x' if leverage > 1.0 else 'ML短线买入'
+                            buy_reason = f'ML{leverage}x' if leverage > 1.0 else 'ML短線買入'
                             _portfolio.execute_buy(best_ticker, qty, price,
                                                    commission=comm, reason=buy_reason)
                             _position_entry_time[best_ticker] = _iteration_count
-                        # 记录交易指令
+                        # 記錄交易指令
                             _recent_signals.append({
                                 'time': datetime.now().strftime('%H:%M:%S'),
                                 'action': 'BUY',
@@ -836,18 +823,18 @@ def tick_engine():
                                 _recent_signals = _recent_signals[-50:]
     
     # ═══════════════════════════════════════════════════════════
-    # 真实统计预测（每30次约30秒生成一次预测）
-    # 使用多因子模型: 动量+均值回归+成交量+波动率
+    # 真實統計預測（每30次約30秒生成一次預測）
+    # 使用多因子模型: 動量+均值回歸+成交量+波動率
     # ═══════════════════════════════════════════════════════════
     if _iteration_count % 30 == 0:
-        # 只从有价格数据的股票中选取
+        # 只從有價格數據的股票中選取
         available_tickers = [t for t in TRACKED_TICKERS if t in _current_prices and _current_prices[t] > 0]
         if not available_tickers:
             available_tickers = list(TRACKED_TICKERS)
         ticker = available_tickers[_iteration_count % len(available_tickers)]
         price = _current_prices.get(ticker, 0)
         if price > 0:
-            # 使用统计预测器生成真实信号
+            # 使用統計預測器生成真實信號
             direction, confidence, factors = _predictor.predict(ticker, price)
             predicted_return = (price / _previous_prices.get(ticker, price) - 1) if ticker in _previous_prices else 0.001
             
@@ -856,15 +843,15 @@ def tick_engine():
             )
             _prediction_iters[pred_id] = _iteration_count
             
-            # 确认该ticker的所有旧预测（已过30秒）
-            # 查找30秒前同一ticker的未确认预测来确认
+            # 確認該ticker的所有舊預測（已過30秒）
+            # 查找30秒前同一ticker的未確認預測來確認
             candidates_to_confirm = []
             for pid, pr in _accuracy.predictions.items():
                 if pr.ticker == ticker and pr.status == 'pending' and pr.id < pred_id:
                     candidates_to_confirm.append((pid, pr))
             
             if candidates_to_confirm:
-                # 确认最早的预测
+                # 確認最早的預測
                 candidates_to_confirm.sort(key=lambda x: x[0])
                 oldest_pid, oldest_pr = candidates_to_confirm[0]
                 old_price = _previous_prices.get(ticker, price)
@@ -872,18 +859,18 @@ def tick_engine():
                 actual_direction = 1 if actual_return > 0 else 0
                 _accuracy.confirm_prediction(oldest_pid, actual_return, actual_direction)
             
-            # 额外：确认超过2分钟(120迭代)的未确认预测，使用当前价
+            # 額外：確認超過2分鐘(120迭代)的未確認預測，使用當前價
             for pid, pr in list(_accuracy.predictions.items()):
                 if pr.status == 'pending' and (_iteration_count - _prediction_iters.get(pid, 0)) > 120:
                     actual_return = (price / _previous_prices.get(pr.ticker, price) - 1) if pr.ticker in _previous_prices else 0
                     actual_direction = 1 if actual_return > 0 else 0
                     _accuracy.confirm_prediction(pid, actual_return, actual_direction)
     
-    # 超时确认：每60秒确认超过90秒未确认的预测
+    # 超時確認：每60秒確認超過90秒未確認的預測
     if _iteration_count % 60 == 0:
         for pid, pr in list(_accuracy.predictions.items()):
             if pr.status == 'pending':
-                # 用预测时的迭代数判断是否超时（90秒 ≈ 90迭代）
+                # 用預測時的迭代數判斷是否超時（90秒 ≈ 90迭代）
                 pred_iter = _prediction_iters.get(pid, 0)
                 if (_iteration_count - pred_iter) > 90:
                     ticker = pr.ticker
@@ -896,7 +883,7 @@ def tick_engine():
 
 
 def _collect_globals_dict():
-    """收集全局运行时状态，避免重复代码"""
+    """收集全局運行時狀態，避免重複代碼"""
     return {
         'current_prices': _current_prices,
         'previous_prices': _previous_prices,
@@ -914,76 +901,76 @@ def _collect_globals_dict():
 
 
 def init_ml_model():
-    """后台加载ML模型（异步，不阻塞启动）"""
+    """後臺加載ML模型（異步，不阻塞啟動）"""
     global _ml_inference, _ml_ready
     try:
         _ml_inference = ModelInference()
         if _ml_inference.load():
             _ml_ready = True
-            print(f'[{datetime.now().strftime("%H:%M:%S")}] 🧠 Transformer模型加载成功', flush=True)
+            print(f'[{datetime.now().strftime("%H:%M:%S")}] 🧠 Transformer模型加載成功', flush=True)
             return True
         else:
-            print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ Transformer模型文件不存在，使用统计预测器', flush=True)
+            print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ Transformer模型文件不存在，使用統計預測器', flush=True)
     except Exception as e:
-        print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ ML模型加载失败: {e}', flush=True)
+        print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ ML模型加載失敗: {e}', flush=True)
     return False
 
 def engine_loop():
-    """后台引擎循环（每秒1次）"""
+    """後臺引擎循環（每秒1次）"""
     global _engine_running, _iteration_count, _ml_ready
     _offline_training_done = False
-    _ml_model_loaded = _ml_ready  # 从持久化状态恢复
+    _ml_model_loaded = _ml_ready  # 從持久化狀態恢復
     
     def trigger_offline_training():
-        """在休市时离线训练Transformer"""
+        """在休市時離線訓練Transformer"""
         nonlocal _offline_training_done
         if _offline_training_done:
             return
         status, _ = _clock.get_status()
         if status != MarketStatus.REGULAR_HOURS and _iteration_count > 300:
-            _offline_training_done = True  # 防止重复触发
-            print(f'[{datetime.now().strftime("%H:%M:%S")}] 🧠 休市中，启动离线Transformer训练（后台）...', flush=True)
-            # 在后台线程中训练，避免阻塞引擎循环
+            _offline_training_done = True  # 防止重複觸發
+            print(f'[{datetime.now().strftime("%H:%M:%S")}] 🧠 休市中，啟動離線Transformer訓練（後臺）...', flush=True)
+            # 在後臺線程中訓練，避免阻塞引擎循環
             def _train_thread():
                 try:
                     from live_trading.predictor import train_offline_transformer
                     acc = train_offline_transformer()
                     if acc:
-                        print(f'[{datetime.now().strftime("%H:%M:%S")}] ✅ 离线训练完成，准确率: {acc:.2%}', flush=True)
+                        print(f'[{datetime.now().strftime("%H:%M:%S")}] ✅ 離線訓練完成，準確率: {acc:.2%}', flush=True)
                 except Exception as e:
-                    print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ 离线训练失败: {e}', flush=True)
+                    print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ 離線訓練失敗: {e}', flush=True)
             threading.Thread(target=_train_thread, daemon=True, name='offline-train').start()
     
-    # 启动时立即加载ML模型
-    print(f'[{datetime.now().strftime("%H:%M:%S")}] 🔄 加载ML模型...', flush=True)
+    # 啟動時立即加載ML模型
+    print(f'[{datetime.now().strftime("%H:%M:%S")}] 🔄 加載ML模型...', flush=True)
     if init_ml_model():
         _ml_model_loaded = True
         _ml_ready = True
-        print(f'[{datetime.now().strftime("%H:%M:%S")}] ✅ ML模型就绪', flush=True)
+        print(f'[{datetime.now().strftime("%H:%M:%S")}] ✅ ML模型就緒', flush=True)
     else:
-        print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ ML模型未加载', flush=True)
+        print(f'[{datetime.now().strftime("%H:%M:%S")}] ⚠️ ML模型未加載', flush=True)
     
     while _engine_running:
         try:
-            # 延迟加载ML模型（每60秒重试一次，避免频繁创建对象）
+            # 延遲加載ML模型（每60秒重試一次，避免頻繁創建對象）
             if not _ml_model_loaded and _iteration_count % 60 == 0:
                 if init_ml_model():
                     _ml_model_loaded = True
-                    _ml_ready = True  # 同步全局状态（已在函数顶部声明global）
+                    _ml_ready = True  # 同步全局狀態（已在函數頂部聲明global）
             tick_engine()
-            # 休市时每10分钟检查是否需要离线训练
+            # 休市時每10分鐘檢查是否需要離線訓練
             if _iteration_count % 600 == 0:
                 trigger_offline_training()
-            # 每60次迭代（约60秒）自动保存状态
+            # 每60次迭代（約60秒）自動保存狀態
             if _iteration_count > 0 and _iteration_count % 60 == 0:
                 save_state(_portfolio, _accuracy, _benchmark, _collect_globals_dict())
         except Exception as e:
-            print(f"引擎异常: {e}", flush=True)
+            print(f"引擎異常: {e}", flush=True)
         time.sleep(1)
     
-    # 引擎停止时保存最终状态（包含全部运行时状态）
+    # 引擎停止時保存最終狀態（包含全部運行時狀態）
     save_state(_portfolio, _accuracy, _benchmark, _collect_globals_dict())
-    print('💾 最终状态已保存', flush=True)
+    print('💾 最終狀態已保存', flush=True)
 
 
 # ============================================================================
@@ -992,7 +979,7 @@ def engine_loop():
 
 @app.route('/api/health')
 def api_health():
-    """健康检查端点（供watchdog使用）"""
+    """健康檢查端點（供watchdog使用）"""
     status, desc = _clock.get_status()
     return jsonify({
         'status': 'ok',
@@ -1005,7 +992,7 @@ def api_health():
 
 @app.route('/api/tickers')
 def api_tickers():
-    """返回所有追踪的股票代码列表"""
+    """返回所有追蹤的股票代碼列表"""
     return jsonify({
         'tickers': list(TRACKED_TICKERS),
         'count': len(TRACKED_TICKERS),
@@ -1013,12 +1000,12 @@ def api_tickers():
 
 @app.route('/api/signals')
 def api_signals():
-    """交易指令端点 - 返回Markdown格式的交易信号"""
+    """交易指令端點 - 返回Markdown格式的交易信號"""
     if not _recent_signals:
-        return jsonify({'signals_md': '*(暂无交易指令)*', 'signals': []})
+        return jsonify({'signals_md': '*(暫無交易指令)*', 'signals': []})
     
     lines = []
-    for s in _recent_signals[-20:]:  # 最近20条
+    for s in _recent_signals[-20:]:  # 最近20條
         emoji = '🟢' if s['action'] == 'BUY' else '🔴'
         lines.append(
             f"**{emoji} {s['action']}** {s['ticker']} "
@@ -1038,7 +1025,7 @@ def index():
 
 
 def build_status_data():
-    """构建状态数据字典（供API和WebSocket共用）"""
+    """構建狀態數據字典（供API和WebSocket共用）"""
     status, desc = _clock.get_status()
     market_info = _clock.get_trading_session_info()
     waiting_for_open = not _positions_initialized
@@ -1064,7 +1051,7 @@ def build_status_data():
     net_pnl = total_equity - _portfolio.initial_capital
     net_pnl_pct = (net_pnl / _portfolio.initial_capital) if _portfolio.initial_capital > 0 else 0
     
-    _benchmark._ensure_curves_synced()  # 确保 API 读取时曲线已同步
+    _benchmark._ensure_curves_synced()  # 確保 API 讀取時曲線已同步
     bench = _benchmark.get_snapshot()
     acc = _accuracy.get_snapshot()
     
@@ -1093,7 +1080,7 @@ def build_status_data():
     if status == MarketStatus.REGULAR_HOURS:
         cd = market_info.get('countdown_to_close')
         if cd:
-            countdown = f"距闭市 {cd[0]}h {cd[1]:02d}m {cd[2]:02d}s"
+            countdown = f"距閉市 {cd[0]}h {cd[1]:02d}m {cd[2]:02d}s"
     else:
         cd = market_info.get('countdown_to_open')
         if cd:
@@ -1190,7 +1177,7 @@ def build_status_data():
 
 @app.route('/api/kline/<ticker>')
 def api_kline(ticker):
-    """K线数据API"""
+    """K線數據API"""
     period = request.args.get('period', '1d')
     interval = request.args.get('interval', '5m')
     candles = fetch_kline_data(ticker.upper(), period, interval)
@@ -1198,7 +1185,7 @@ def api_kline(ticker):
 
 @app.route('/api/kline/multi')
 def api_kline_multi():
-    """批量K线数据API"""
+    """批量K線數據API"""
     tickers_str = request.args.get('tickers', '')
     period = request.args.get('period', '1d')
     interval = request.args.get('interval', '15m')
@@ -1207,7 +1194,7 @@ def api_kline_multi():
         tickers = ['AAPL', 'NVDA', 'MSFT', 'GOOGL']
     
     result = {}
-    for t in tickers[:6]:  # 最多6只
+    for t in tickers[:6]:  # 最多6隻
         candles = fetch_kline_data(t, period, interval)
         if candles:
             result[t] = candles
@@ -1216,32 +1203,32 @@ def api_kline_multi():
 
 @app.route('/api/status')
 def api_status():
-    """获取完整系统状态"""
+    """獲取完整系統狀態"""
     return jsonify(build_status_data())
 
 def start_server(host: str = '0.0.0.0', port: int = 8080, debug: bool = False):
-    """启动Web服务器"""
+    """啟動Web伺服器"""
     global _engine_running, _engine_thread
     
-    # 不在此处初始化持仓 —— 等开盘后由 tick_engine 执行
+    # 不在此處初始化持倉 —— 等開盤後由 tick_engine 執行
     
     _engine_running = True
     _engine_thread = threading.Thread(target=engine_loop, daemon=True)
     _engine_thread.start()
     
-    # 检查当前市场状态
+    # 檢查當前市場狀態
     status, desc = _clock.get_status()
     if status == MarketStatus.REGULAR_HOURS:
-        print(f"\n  🟢 当前市场已开盘，立即开始交易!")
+        print(f"\n  🟢 當前市場已開盤，立即開始交易!")
     else:
         cd = _clock.countdown_to_next_open()
-        print(f"\n  ⏳ 等待开盘... 距离开市还有约 {cd[0]}h {cd[1]:02d}m {cd[2]:02d}s")
-        print(f"  系统将在美东 09:30 自动建仓并开始交易")
+        print(f"\n  ⏳ 等待開盤... 距離開市還有約 {cd[0]}h {cd[1]:02d}m {cd[2]:02d}s")
+        print(f"  系統將在美東 09:30 自動建倉並開始交易")
     
     print(f"\n{'='*60}")
-    print(f"  美股量化交易系统 - Web仪表盘")
+    print(f"  美股量化交易系統 - Web儀錶盤")
     print(f"  地址: http://localhost:{port}")
-    print(f"  刷新频率: 每秒")
+    print(f"  刷新頻率: 每秒")
     print(f"  按 Ctrl+C 停止")
     print(f"{'='*60}\n", flush=True)
     
@@ -1251,14 +1238,14 @@ def start_server(host: str = '0.0.0.0', port: int = 8080, debug: bool = False):
 
 @app.route('/api/benchmark_curve')
 def api_benchmark_curve():
-    """策略 vs 纳指 权益曲线数据（返回百分比收益率）"""
+    """策略 vs 納指 權益曲線數據（返回百分比收益率）"""
     try:
         _benchmark._ensure_curves_synced()
         nasdaq_curve = _benchmark.nasdaq_equity_curve
         strategy_curve = _benchmark.strategy_equity_curve
         initial = _benchmark.initial_capital
         
-        # 合并两个 Series 的时间戳，取最新的300个（避免全量排序）
+        # 合併兩個 Series 的時間戳，取最新的300個（避免全量排序）
         all_indices = nasdaq_curve.index.union(strategy_curve.index)
         latest_indices = all_indices[-300:] if len(all_indices) > 300 else all_indices
         points = []
@@ -1290,14 +1277,14 @@ def api_benchmark_curve():
 
 @app.route('/api/backtest_summary')
 def api_backtest_summary():
-    """回测结果摘要"""
+    """回測結果摘要"""
     try:
         from backtesting.performance import BacktestPerformance
         from config.settings import PROCESSED_DATA_DIR
-        # 尝试加载已有回测结果或返回空
+        # 嘗試加載已有回測結果或返回空
         return jsonify({
             'available': False,
-            'message': '运行 python main.py backtest 生成回测结果',
+            'message': '運行 python main.py backtest 生成回測結果',
             'summary': {}
         })
     except Exception as e:
@@ -1305,15 +1292,15 @@ def api_backtest_summary():
 
 
 def _shutdown_handler(signum=None, frame=None):
-    """进程退出时保存状态"""
+    """進程退出時保存狀態"""
     global _engine_running
-    print('\n🛑 正在关闭...', flush=True)
+    print('\n🛑 正在關閉...', flush=True)
     _engine_running = False
     if _engine_thread and _engine_thread.is_alive():
         _engine_thread.join(timeout=3)
-    # 保存状态
+    # 保存狀態
     save_state(_portfolio, _accuracy, _benchmark, _collect_globals_dict())
-    print('💾 状态已保存，安全退出', flush=True)
+    print('💾 狀態已保存，安全退出', flush=True)
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, _shutdown_handler)

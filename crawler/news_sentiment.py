@@ -1,24 +1,4 @@
-"""
-新闻情感与财报数据抓取模块
-
-从 Yahoo Finance 抓取股票相关新闻和财报数据，
-进行情感分析后作为ML模型的辅助特征。
-
-核心功能：
-- 批量抓取历史新闻标题（通过 yfinance）
-- 轻量级情感分析（关键词+规则，无重量级NLP依赖）
-- 财报日期和盈利惊喜数据
-- 生成每日情感得分和财报特征
-
-设计原则：
-- 小权重特征：情感得分仅作为辅助信号
-- 轻量实现：无transformers等重量级依赖
-- 可缓存：结果存parquet避免重复抓取
-
-数据源：
-- Yahoo Finance (via yfinance .news / .earnings)
-- 财报日历 (via yfinance .calendar / .earnings_dates)
-"""
+"""News sentiment analysis."""
 
 import logging
 import re
@@ -39,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 情感词典
+# 情感詞典
 # ============================================================================
-# 正面词汇 (利好)
+# 正面詞彙 (利好)
 POSITIVE_WORDS = {
     'beat', 'beats', 'beat estimates', 'exceed', 'exceeds', 'exceeded',
     'raise', 'raises', 'raised', 'raising', 'upgrade', 'upgrades', 'upgraded',
@@ -141,7 +121,7 @@ POSITIVE_WORDS = {
     'raised dividend',
 }
 
-# 负面词汇 (利空)
+# 負面詞彙 (利空)
 NEGATIVE_WORDS = {
     'miss', 'misses', 'missed', 'miss estimates', 'below', 'below expectations',
     'cut', 'cuts', 'cutting', 'downgrade', 'downgrades', 'downgraded',
@@ -255,7 +235,7 @@ NEGATIVE_WORDS = {
     'cut forecast',
 }
 
-# 财报相关关键词
+# 財報相關關鍵詞
 EARNINGS_WORDS = {
     'earnings', 'quarterly', 'q1', 'q2', 'q3', 'q4', 'fiscal',
     'results', 'report', 'reports', 'reported', 'reporting',
@@ -290,33 +270,33 @@ EARNINGS_WORDS = {
 
 @dataclass
 class SentimentResult:
-    """单条新闻的情感分析结果"""
+    """單條新聞的情感分析結果"""
     ticker: str
     date: date
     headline: str
-    sentiment_score: float  # -1.0 (极空) 到 +1.0 (极多)
-    is_earnings: bool       # 是否财报相关
-    source: str              # 新闻来源
+    sentiment_score: float  # -1.0 (極空) 到 +1.0 (極多)
+    is_earnings: bool       # 是否財報相關
+    source: str              # 新聞來源
 
 
 @dataclass
 class DailySentiment:
-    """单日汇总情感"""
+    """單日匯總情感"""
     date: date
     ticker: str
     avg_sentiment: float           # 平均情感 (-1到1)
-    news_count: int                # 新闻数量
-    positive_ratio: float          # 正面新闻占比
-    earnings_news_count: int       # 财报相关新闻数
-    has_earnings_report: bool      # 当日是否有财报发布
+    news_count: int                # 新聞數量
+    positive_ratio: float          # 正面新聞佔比
+    earnings_news_count: int       # 財報相關新聞數
+    has_earnings_report: bool      # 當日是否有財報發布
 
 
 class NewsSentimentAnalyzer:
     """
-    新闻情感分析器
+    新聞情感分析器
     
-    从Yahoo Finance抓取新闻，使用关键词规则进行轻量级情感分析。
-    无需transformers或大型NLP模型，依赖简单可靠。
+    從Yahoo Finance抓取新聞，使用關鍵詞規則進行輕量級情感分析。
+    無需transformers或大型NLP模型，依賴簡單可靠。
     
     使用示例:
         analyzer = NewsSentimentAnalyzer()
@@ -330,12 +310,12 @@ class NewsSentimentAnalyzer:
     
     def analyze_headline(self, headline: str) -> Tuple[float, bool]:
         """
-        分析单条新闻标题的情感
+        分析單條新聞標題的情感
         
         返回:
             (sentiment_score, is_earnings)
             sentiment_score: -1.0到1.0
-            is_earnings: 是否财报相关
+            is_earnings: 是否財報相關
         """
         if not headline or not isinstance(headline, str):
             return 0.0, False
@@ -343,11 +323,11 @@ class NewsSentimentAnalyzer:
         text = headline.lower()
         words = set(text.split())
         
-        # 计数正负关键词
+        # 計數正負關鍵詞
         pos_count = len(words & POSITIVE_WORDS)
         neg_count = len(words & NEGATIVE_WORDS)
         
-        # 检查子串匹配（短语）
+        # 檢查子串匹配（短語）
         for phrase in POSITIVE_WORDS:
             if ' ' in phrase and phrase in text:
                 pos_count += 1
@@ -362,9 +342,9 @@ class NewsSentimentAnalyzer:
         else:
             sentiment = (pos_count - neg_count) / total
         
-        # 财报检测
+        # 財報檢測
         is_earnings = bool(words & EARNINGS_WORDS)
-        # 也检测财报关键词子串
+        # 也檢測財報關鍵詞子串
         for word in EARNINGS_WORDS:
             if len(word) <= 2:
                 continue
@@ -378,11 +358,11 @@ class NewsSentimentAnalyzer:
         self, ticker: str, lookback_days: int = 30
     ) -> List[SentimentResult]:
         """
-        抓取单只股票的历史新闻并分析情感
+        抓取單只股票的歷史新聞並分析情感
         
-        参数:
-            ticker: 股票代码
-            lookback_days: 回溯天数
+        參數:
+            ticker: 股票代碼
+            lookback_days: 回溯天數
         
         返回:
             SentimentResult列表
@@ -390,7 +370,7 @@ class NewsSentimentAnalyzer:
         try:
             import yfinance as yf
         except ImportError:
-            logger.warning("yfinance 未安装，跳过新闻抓取")
+            logger.warning("yfinance 未安裝，跳過新聞抓取")
             return []
         
         results = []
@@ -399,14 +379,14 @@ class NewsSentimentAnalyzer:
             news = stock.news
             
             if not news:
-                logger.debug(f"{ticker}: 无新闻数据")
+                logger.debug(f"{ticker}: 無新聞數據")
                 return []
             
             cutoff = date.today() - timedelta(days=lookback_days)
             
             for item in news:
                 try:
-                    # 解析发布时间
+                    # 解析發布時間
                     pub_time = item.get('content', {}).get('pubDate', '')
                     if pub_time:
                         try:
@@ -452,12 +432,12 @@ class NewsSentimentAnalyzer:
                     continue
             
             logger.info(
-                f"{ticker}: 抓取 {len(results)} 条新闻 "
+                f"{ticker}: 抓取 {len(results)} 條新聞 "
                 f"(回溯{lookback_days}天)"
             )
             
         except Exception as e:
-            logger.warning(f"{ticker} 新闻抓取失败: {e}")
+            logger.warning(f"{ticker} 新聞抓取失敗: {e}")
         
         return results
     
@@ -465,7 +445,7 @@ class NewsSentimentAnalyzer:
         self, results: List[SentimentResult]
     ) -> pd.DataFrame:
         """
-        将新闻情感结果聚合为每日指标
+        將新聞情感結果聚合為每日指標
         
         返回:
             DataFrame with columns:
@@ -504,7 +484,7 @@ class NewsSentimentAnalyzer:
         self, ticker: str
     ) -> Optional[pd.DataFrame]:
         """
-        抓取财报历史数据（盈利惊喜等）
+        抓取財報歷史數據（盈利驚喜等）
         
         返回:
             DataFrame with earnings surprise info
@@ -513,7 +493,7 @@ class NewsSentimentAnalyzer:
             import yfinance as yf
             stock = yf.Ticker(ticker)
             
-            # 财报日期
+            # 財報日期
             earnings_dates = stock.earnings_dates
             if earnings_dates is None or earnings_dates.empty:
                 return None
@@ -524,7 +504,7 @@ class NewsSentimentAnalyzer:
             if df.index.tz is not None:
                 df.index = df.index.tz_convert('America/New_York').normalize().tz_localize(None)
             
-            # 计算盈利惊喜
+            # 計算盈利驚喜
             if 'EPS Estimate' in df.columns and 'Reported EPS' in df.columns:
                 df['earnings_surprise'] = (
                     df['Reported EPS'] - df['EPS Estimate']
@@ -545,13 +525,13 @@ class NewsSentimentAnalyzer:
                 df['earnings_surprise_pct'] = df['Surprise(%)'] / 100.0
             
             logger.info(
-                f"{ticker}: 抓到 {len(df)} 条财报记录"
+                f"{ticker}: 抓到 {len(df)} 條財報記錄"
             )
             
             return df
             
         except Exception as e:
-            logger.debug(f"{ticker} 财报抓取失败: {e}")
+            logger.debug(f"{ticker} 財報抓取失敗: {e}")
             return None
     
     def build_sentiment_features(
@@ -561,12 +541,12 @@ class NewsSentimentAnalyzer:
         lookback_days: int = 90
     ) -> pd.DataFrame:
         """
-        为给定日期范围构建情感特征矩阵
+        為給定日期範圍構建情感特徵矩陣
         
-        参数:
+        參數:
             tickers: 股票列表
-            target_dates: 目标日期范围
-            lookback_days: 回溯天数
+            target_dates: 目標日期範圍
+            lookback_days: 回溯天數
         
         返回:
             DataFrame with sentiment features per date per ticker
@@ -574,22 +554,22 @@ class NewsSentimentAnalyzer:
         all_features = []
         
         for ticker in tickers:
-            # 尝试加载缓存
+            # 嘗試加載緩存
             cache_key = f"{ticker}_sentiment_{lookback_days}"
             if cache_key in self._sentiment_cache:
                 features = self._sentiment_cache[cache_key]
             else:
-                # 抓取新闻
+                # 抓取新聞
                 news = self.fetch_news_for_ticker(ticker, lookback_days)
                 if news:
                     daily = self.aggregate_daily(news)
                 else:
                     daily = pd.DataFrame()
                 
-                # 抓取财报
+                # 抓取財報
                 earnings = self.fetch_earnings_data(ticker)
                 
-                # 构建特征
+                # 構建特徵
                 features = self._build_feature_df(
                     ticker, daily, earnings, target_dates
                 )
@@ -600,12 +580,12 @@ class NewsSentimentAnalyzer:
                 all_features.append(features)
         
         if not all_features:
-            logger.warning("所有股票均无新闻/财报数据")
+            logger.warning("所有股票均無新聞/財報數據")
             return pd.DataFrame()
         
         result = pd.concat(all_features)
         logger.info(
-            f"情感特征构建完成: {len(result)} 行, "
+            f"情感特徵構建完成: {len(result)} 行, "
             f"{len(result.columns)} 列"
         )
         return result
@@ -617,12 +597,12 @@ class NewsSentimentAnalyzer:
         earnings: Optional[pd.DataFrame],
         target_dates: pd.DatetimeIndex
     ) -> pd.DataFrame:
-        """构建单只股票的情感特征DataFrame"""
+        """構建單只股票的情感特徵DataFrame"""
         idx = pd.DatetimeIndex(target_dates)
         df = pd.DataFrame(index=idx)
         df['ticker'] = ticker
         
-        # 默认值
+        # 默認值
         df['news_sentiment'] = 0.0
         df['news_count'] = 0
         df['news_positive_ratio'] = 0.5
@@ -632,7 +612,7 @@ class NewsSentimentAnalyzer:
         df['earnings_surprise_pct'] = 0.0
         df['has_earnings_report'] = 0
         
-        # 填充新闻情感
+        # 填充新聞情感
         if not daily_sentiment.empty:
             for col in ['news_sentiment', 'news_count', 'news_positive_ratio',
                         'earnings_news_count', 'has_earnings_news']:
@@ -643,7 +623,7 @@ class NewsSentimentAnalyzer:
                             common_idx, col
                         ].values
         
-        # 填充财报数据
+        # 填充財報數據
         if earnings is not None and not earnings.empty:
             for col in ['earnings_surprise', 'earnings_surprise_pct']:
                 if col in earnings.columns:
@@ -651,20 +631,20 @@ class NewsSentimentAnalyzer:
                     if len(earn_idx) > 0:
                         df.loc[earn_idx, col] = earnings.loc[earn_idx, col]
             
-            # 财报发布日标记
+            # 財報發布日標記
             if 'has_earnings_report' in earnings.columns:
                 earn_idx = earnings.index.intersection(df.index)
                 if len(earn_idx) > 0:
                     df.loc[earn_idx, 'has_earnings_report'] = 1
         
-        # 前向填充（新闻情感影响持续数日）
+        # 前向填充（新聞情感影響持續數日）
         df['news_sentiment'] = df['news_sentiment'].replace(0, np.nan)
         df['news_sentiment'] = df['news_sentiment'].ffill(limit=3).fillna(0)
         
         df['news_positive_ratio'] = df['news_positive_ratio'].replace(0.5, np.nan)
         df['news_positive_ratio'] = df['news_positive_ratio'].ffill(limit=3).fillna(0.5)
         
-        # 滚动平均（3日平滑）
+        # 滾動平均（3日平滑）
         df['news_sentiment_3d'] = df['news_sentiment'].rolling(3, min_periods=1).mean()
         df['news_sentiment_7d'] = df['news_sentiment'].rolling(7, min_periods=1).mean()
         
@@ -677,36 +657,36 @@ def build_news_features_for_pipeline(
     lookback_days: int = 90
 ) -> pd.DataFrame:
     """
-    为data_pipeline添加新闻情感特征
+    為data_pipeline添加新聞情感特徵
     
-    便捷函数，供数据处理管线调用。
+    便捷函數，供數據處理管線調用。
     
-    参数:
+    參數:
         tickers: 股票列表
-        existing_df: 现有特征DataFrame（需含MultiIndex [date, ticker]）
-        lookback_days: 回溯天数
+        existing_df: 現有特徵DataFrame（需含MultiIndex [date, ticker]）
+        lookback_days: 回溯天數
     
     返回:
-        添加了新闻特征的DataFrame
+        添加了新聞特徵的DataFrame
     """
     analyzer = NewsSentimentAnalyzer()
     
-    # 获取日期范围
+    # 獲取日期範圍
     if isinstance(existing_df.index, pd.MultiIndex):
         dates = existing_df.index.get_level_values(0).unique()
     else:
         dates = existing_df.index
     
-    # 构建情感特征
+    # 構建情感特徵
     sentiment_df = analyzer.build_sentiment_features(
         tickers, dates, lookback_days
     )
     
     if sentiment_df.empty:
-        logger.warning("无新闻特征可用，返回原始数据")
+        logger.warning("無新聞特徵可用，返回原始數據")
         return existing_df
     
-    # 合并到现有DataFrame
+    # 合併到現有DataFrame
     if isinstance(existing_df.index, pd.MultiIndex):
         existing_df = existing_df.reset_index()
         sentiment_df = sentiment_df.reset_index()

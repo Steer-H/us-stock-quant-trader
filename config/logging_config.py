@@ -1,12 +1,4 @@
-"""
-美股量化交易系统 - 日志配置模块
-
-提供统一的日志配置，支持：
-- 控制台输出（带颜色区分日志级别）
-- 文件输出（按日期轮转）
-- 结构化日志（JSON格式可选，便于接入ELK等日志平台）
-- 分级管理（交易日志、系统日志、审计日志分离）
-"""
+"""Logging configuration."""
 
 import logging
 import logging.handlers
@@ -19,32 +11,32 @@ from config.settings import SystemConfig, LOGS_DIR
 
 
 # ============================================================================
-# 自定义日志格式化器（带颜色）
+# 自定義日誌格式化器（帶顏色）
 # ============================================================================
 class ColoredFormatter(logging.Formatter):
     """
-    为控制台日志输出添加ANSI颜色标记
+    為控制臺日誌輸出添加ANSI顏色標記
     
-    颜色方案：
+    顏色方案：
     - DEBUG:    灰色
-    - INFO:     绿色
-    - WARNING:  黄色
-    - ERROR:    红色
-    - CRITICAL: 红底白字
+    - INFO:     綠色
+    - WARNING:  黃色
+    - ERROR:    紅色
+    - CRITICAL: 紅底白字
     """
     
-    # ANSI颜色码
+    # ANSI顏色碼
     COLORS = {
         'DEBUG':    '\033[90m',    # 灰色
-        'INFO':     '\033[92m',    # 绿色
-        'WARNING':  '\033[93m',    # 黄色
-        'ERROR':    '\033[91m',    # 红色
-        'CRITICAL': '\033[41m\033[97m',  # 红底白字
+        'INFO':     '\033[92m',    # 綠色
+        'WARNING':  '\033[93m',    # 黃色
+        'ERROR':    '\033[91m',    # 紅色
+        'CRITICAL': '\033[41m\033[97m',  # 紅底白字
     }
     RESET = '\033[0m'
     
     def format(self, record: logging.LogRecord) -> str:
-        # 克隆record以避免污染原始对象
+        # 克隆record以避免汙染原始對象
         record_copy = logging.LogRecord(
             record.name, record.levelno, record.pathname,
             record.lineno, record.msg, record.args,
@@ -62,16 +54,16 @@ class ColoredFormatter(logging.Formatter):
 
 
 # ============================================================================
-# 日志管理器
+# 日誌管理器
 # ============================================================================
 class LogManager:
     """
-    集中管理所有日志器
+    集中管理所有日誌器
     
-    设计原则：
-    - 交易审计日志：记录每笔下单、成交、撤单，不可删除，用于合规审查
-    - 系统运行日志：记录系统状态、数据拉取、模型运行等
-    - 风控日志：记录所有风控触发事件
+    設計原則：
+    - 交易審計日誌：記錄每筆下單、成交、撤單，不可刪除，用於合規審查
+    - 系統運行日誌：記錄系統狀態、數據拉取、模型運行等
+    - 風控日誌：記錄所有風控觸發事件
     """
     
     _instance: Optional['LogManager'] = None
@@ -83,7 +75,7 @@ class LogManager:
         return cls._instance
     
     def __init__(self, config: Optional[SystemConfig] = None):
-        # 只初始化一次（单例模式）
+        # 只初始化一次（單例模式）
         if LogManager._initialized:
             return
         LogManager._initialized = True
@@ -91,21 +83,21 @@ class LogManager:
         self.config = config or SystemConfig()
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         
-        # 初始化各类日志器
+        # 初始化各類日誌器
         self._setup_root_logger()
-        self._setup_trade_logger()     # 交易审计日志
-        self._setup_system_logger()    # 系统运行日志
-        self._setup_risk_logger()      # 风控日志
+        self._setup_trade_logger()     # 交易審計日誌
+        self._setup_system_logger()    # 系統運行日誌
+        self._setup_risk_logger()      # 風控日誌
     
     def _setup_root_logger(self) -> None:
-        """配置根日志器（捕获未分类的日志）"""
+        """配置根日誌器（捕獲未分類的日誌）"""
         root = logging.getLogger()
         root.setLevel(logging.DEBUG)
         
-        # 清除已有的handler（防止重复）
+        # 清除已有的handler（防止重複）
         root.handlers.clear()
         
-        # 控制台handler（INFO级别以上）
+        # 控制臺handler（INFO級別以上）
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(getattr(logging, self.config.log_level))
         console_handler.setFormatter(ColoredFormatter(
@@ -114,16 +106,16 @@ class LogManager:
         ))
         root.addHandler(console_handler)
         
-        # 禁止第三方库的DEBUG日志噪音
+        # 禁止第三方庫的DEBUG日誌噪音
         for noisy_lib in ['urllib3', 'matplotlib', 'PIL', 'asyncio', 'ib_insync']:
             logging.getLogger(noisy_lib).setLevel(logging.WARNING)
     
     def _setup_file_handler(self, log_name: str) -> logging.FileHandler:
         """
-        创建带轮转的文件handler
+        創建帶輪轉的文件handler
         
-        参数:
-            log_name: 日志文件名前缀（不含扩展名）
+        參數:
+            log_name: 日誌文件名前綴（不含擴展名）
         
         返回:
             配置好的RotatingFileHandler
@@ -144,23 +136,23 @@ class LogManager:
     
     def _setup_trade_logger(self) -> None:
         """
-        交易审计日志器
+        交易審計日誌器
         
-        记录内容：每笔信号、下单、改单、撤单、成交、拒绝等
-        安全要求：不可删除、不可修改，用于合规审查
+        記錄內容：每筆信號、下單、改單、撤單、成交、拒絕等
+        安全要求：不可刪除、不可修改，用於合規審查
         """
         self.trade_logger = logging.getLogger('trade_audit')
         self.trade_logger.setLevel(logging.DEBUG)
-        self.trade_logger.propagate = False  # 不向root传播
+        self.trade_logger.propagate = False  # 不向root傳播
         self.trade_logger.addHandler(
             self._setup_file_handler('trade_audit')
         )
     
     def _setup_system_logger(self) -> None:
         """
-        系统运行日志器
+        系統運行日誌器
         
-        记录内容：数据拉取进度、模型训练状态、API调用耗时、错误堆栈等
+        記錄內容：數據拉取進度、模型訓練狀態、API調用耗時、錯誤堆棧等
         """
         self.system_logger = logging.getLogger('system')
         self.system_logger.setLevel(logging.DEBUG)
@@ -169,16 +161,16 @@ class LogManager:
             self._setup_file_handler('system')
         )
         
-        # 性能子日志器：记录各模块耗时
+        # 性能子日誌器：記錄各模塊耗時
         self.perf_logger = logging.getLogger('system.perf')
         if self.config.enable_perf_logging:
             self.perf_logger.setLevel(logging.DEBUG)
     
     def _setup_risk_logger(self) -> None:
         """
-        风控日志器
+        風控日誌器
         
-        记录内容：所有风控规则触发事件（事前拒绝、事中减仓、事后告警）
+        記錄內容：所有風控規則觸發事件（事前拒絕、事中減倉、事後告警）
         """
         self.risk_logger = logging.getLogger('risk')
         self.risk_logger.setLevel(logging.DEBUG)
@@ -189,31 +181,31 @@ class LogManager:
     
     @classmethod
     def get_trade_logger(cls) -> logging.Logger:
-        """获取交易审计日志器"""
+        """獲取交易審計日誌器"""
         instance = cls._instance or cls()
         return instance.trade_logger
     
     @classmethod
     def get_system_logger(cls) -> logging.Logger:
-        """获取系统运行日志器"""
+        """獲取系統運行日誌器"""
         instance = cls._instance or cls()
         return instance.system_logger
     
     @classmethod
     def get_risk_logger(cls) -> logging.Logger:
-        """获取风控日志器"""
+        """獲取風控日誌器"""
         instance = cls._instance or cls()
         return instance.risk_logger
 
 
 def setup_logging(config: Optional[SystemConfig] = None) -> LogManager:
     """
-    初始化全局日志系统（程序入口调用一次即可）
+    初始化全局日誌系統（程序入口調用一次即可）
     
-    参数:
-        config: 系统配置对象，为None时使用默认配置
+    參數:
+        config: 系統配置對象，為None時使用默認配置
     
     返回:
-        LogManager实例
+        LogManager實例
     """
     return LogManager(config)

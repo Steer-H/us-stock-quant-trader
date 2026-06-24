@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""对比 MPS 和 CPU 训练结果"""
+"""對比 MPS 和 CPU 訓練結果"""
 import re
 from pathlib import Path
 
@@ -8,12 +8,12 @@ ROOT = Path(__file__).resolve().parent.parent
 def extract_metrics(text: str) -> dict:
     m = {}
     patterns = {
-        'direction_accuracy': r'方向准确率[:\s]+([\d.]+)%',
+        'direction_accuracy': r'方向準確率[:\s]+([\d.]+)%',
         'rmse': r'RMSE[:\s]+([\d.]+)',
         'mae': r'MAE[:\s]+([\d.]+)',
         'sharpe': r'(?:年化)?(?:夏普比率|Sharpe)[:\s]+([-\d.]+)',
         'r_squared': r'R²[:\s]+([-\d.]+)',
-        'samples': r'测试样本数?[:\s]+([\d,]+)',
+        'samples': r'測試樣本數?[:\s]+([\d,]+)',
     }
     for k, p in patterns.items():
         match = re.search(p, text)
@@ -63,14 +63,14 @@ MAX_RMSE = 0.06
 
 print()
 print('=' * 60)
-print('  Transformer 训练对比: MPS vs CPU (40只股票)')
+print('  Transformer 訓練對比: MPS vs CPU (40隻股票)')
 print('=' * 60)
 print()
-print(f'{"指标":<20} {"MPS":>15} {"CPU":>15} {"变化":>10}')
+print(f'{"指標":<20} {"MPS":>15} {"CPU":>15} {"變化":>10}')
 print('-' * 60)
 
 for key, label, is_pct in [
-    ('direction_accuracy', '方向准确率', True),
+    ('direction_accuracy', '方向準確率', True),
     ('rmse', 'RMSE', False),
     ('mae', 'MAE', False),
     ('sharpe', '夏普比率', False),
@@ -96,7 +96,7 @@ print('-' * 60)
 sm = mps.get('samples', '-')
 sc = cpu.get('samples', '-')
 if sm != '-' or sc != '-':
-    print(f'{"测试样本":<20} {str(sm):>15} {str(sc):>15}')
+    print(f'{"測試樣本":<20} {str(sm):>15} {str(sc):>15}')
 
 print()
 
@@ -107,14 +107,14 @@ cpu_ok = cd >= MIN_DIR and cr < MAX_RMSE
 mps_ok = md >= MIN_DIR and mps.get('rmse', 999) < MAX_RMSE
 
 if not cpu:
-    print('⚠️  CPU 训练结果尚未生成，请等待训练完成')
+    print('⚠️  CPU 訓練結果尚未生成，請等待訓練完成')
 elif cpu_ok:
-    print(f'✅ CPU 训练达标！方向准确率 {cd:.2%} ≥ {MIN_DIR:.0%}, RMSE {cr:.6f} < {MAX_RMSE}')
+    print(f'✅ CPU 訓練達標！方向準確率 {cd:.2%} ≥ {MIN_DIR:.0%}, RMSE {cr:.6f} < {MAX_RMSE}')
     if not mps_ok:
-        print(f'📊 MPS 精度问题确认：CPU 达标而 MPS 不达标（方向准确率 {md:.2%} < {MIN_DIR:.0%}）')
+        print(f'📊 MPS 精度問題確認：CPU 達標而 MPS 不達標（方向準確率 {md:.2%} < {MIN_DIR:.0%}）')
     else:
-        print('📊 CPU 和 MPS 均达标')
+        print('📊 CPU 和 MPS 均達標')
 else:
-    print(f'❌ CPU 训练未达标！方向准确率 {cd:.2%} (要求 ≥ {MIN_DIR:.0%}), RMSE {cr:.6f} (要求 < {MAX_RMSE})')
+    print(f'❌ CPU 訓練未達標！方向準確率 {cd:.2%} (要求 ≥ {MIN_DIR:.0%}), RMSE {cr:.6f} (要求 < {MAX_RMSE})')
 
 print()

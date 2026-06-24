@@ -1,17 +1,4 @@
-"""
-美股量化交易系统 - 数据清洗模块
-
-处理原始行情数据的质量问题：
-- 缺失值处理（前向填充+插值）
-- 异常值检测与处理（价格跳变、成交量异常）
-- 复权处理（分股、分红导致的假跳空）
-- 多数据源对齐（统一时间戳、列名）
-- 幸存者偏差标记（标注已下市的股票）
-
-设计原则：
-- 所有清洗操作生成审计日志，记录每次修改的内容和原因
-- 支持链式调用: cleaner.remove_outliers().fill_missing().adjust_prices()
-"""
+"""Data cleaning and preprocessing."""
 
 import logging
 from typing import Optional, List, Dict
@@ -27,42 +14,42 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 数据清洗器
+# 數據清洗器
 # ============================================================================
 class DataCleaner:
     """
-    行情数据清洗器
+    行情數據清洗器
     
-    清洗流程（标准流水线）：
-    1. validate_structure()    - 验证数据结构完整性
-    2. remove_outliers()       - 移除异常价格跳变
-    3. handle_corporate_actions() - 处理分红/分股导致的跳空
-    4. fill_missing()          - 填充缺失数据
-    5. normalize()             - 归一化/标准化
+    清洗流程（標準流水線）：
+    1. validate_structure()    - 驗證數據結構完整性
+    2. remove_outliers()       - 移除異常價格跳變
+    3. handle_corporate_actions() - 處理分紅/分股導致的跳空
+    4. fill_missing()          - 填充缺失數據
+    5. normalize()             - 歸一化/標準化
     
-    每一步都返回 self，支持链式调用。
+    每一步都返回 self，支持鏈式調用。
     """
     
     def __init__(self, config: DataSourceConfig):
         """
-        参数:
-            config: 数据源配置
+        參數:
+            config: 數據源配置
         """
         self.config = config
-        self._audit_log: List[Dict] = []  # 审计日志
-        self._modified_count: int = 0     # 总修改次数统计
+        self._audit_log: List[Dict] = []  # 審計日誌
+        self._modified_count: int = 0     # 總修改次數統計
     
     def _log_action(self, action: str, ticker: str, details: str, 
                     before: any = None, after: any = None) -> None:
         """
-        记录清洗操作到审计日志
+        記錄清洗操作到審計日誌
         
-        参数:
-            action: 操作类型（如 'remove_outlier', 'fill_missing'）
-            ticker: 涉及的股票代码
-            details: 详细描述
+        參數:
+            action: 操作類型（如 'remove_outlier', 'fill_missing'）
+            ticker: 涉及的股票代碼
+            details: 詳細描述
             before: 修改前的值
-            after: 修改后的值
+            after: 修改後的值
         """
         self._modified_count += 1
         self._audit_log.append({
@@ -77,26 +64,26 @@ class DataCleaner:
     
     def validate_structure(self, df: pd.DataFrame, ticker: str = '') -> 'DataCleaner':
         """
-        验证数据结构完整性
+        驗證數據結構完整性
         
-        检查项：
+        檢查項：
         - 必需的OHLCV列是否存在
         - 是否存在全空行/列
-        - 日期索引是否单调递增
-        - 价格是否为正数
+        - 日期索引是否單調遞增
+        - 價格是否為正數
         
-        参数:
-            df: 待验证的DataFrame
-            ticker: 股票代码（用于日志）
+        參數:
+            df: 待驗證的DataFrame
+            ticker: 股票代碼（用於日誌）
         
         返回:
-            self，支持链式调用
+            self，支持鏈式調用
         
-        抛出:
-            DataQualityError: 数据质量严重不合格
+        拋出:
+            DataQualityError: 數據質量嚴重不合格
         """
         if df is None or df.empty:
-            raise DataQualityError("DataFrame为空", {'ticker': ticker})
+            raise DataQualityError("DataFrame為空", {'ticker': ticker})
         
         required_cols = {'open', 'high', 'low', 'close', 'volume'}
         actual_cols = set(df.columns) & required_cols
@@ -108,16 +95,16 @@ class DataCleaner:
                 {'ticker': ticker, 'missing': list(missing)}
             )
         
-        # 检查日期索引是否单调递增
+        # 檢查日期索引是否單調遞增
         if df.index.duplicated().any():
             dup_count = df.index.duplicated().sum()
             self._log_action(
                 'remove_duplicates', ticker,
-                f'移除 {dup_count} 个重复日期行'
+                f'移除 {dup_count} 個重複日期行'
             )
             df = df[~df.index.duplicated(keep='first')]
         
-        # 检查价格是否为正数（美股价格通常 > $0.01）
+        # 檢查價格是否為正數（美股價格通常 > $0.01）
         for col in ['open', 'high', 'low', 'close']:
             if col in df.columns:
                 negative_mask = df[col] <= 0
@@ -125,20 +112,20 @@ class DataCleaner:
                     neg_count = negative_mask.sum()
                     self._log_action(
                         'fix_negative_prices', ticker,
-                        f'将 {col} 的 {neg_count} 个非正值设为NaN',
+                        f'將 {col} 的 {neg_count} 個非正值設為NaN',
                         before=neg_count
                     )
                     df.loc[negative_mask, col] = np.nan
         
-        # High必须 >= Low（基本约束）
+        # High必須 >= Low（基本約束）
         if 'high' in df.columns and 'low' in df.columns:
             invalid_hl = df['high'] < df['low']
             if invalid_hl.any():
                 self._log_action(
                     'fix_hl_order', ticker,
-                    f'修正 {invalid_hl.sum()} 行 high<low 的数据',
+                    f'修正 {invalid_hl.sum()} 行 high<low 的數據',
                 )
-                # 互换 High 和 Low
+                # 互換 High 和 Low
                 df.loc[invalid_hl, ['high', 'low']] = df.loc[
                     invalid_hl, ['low', 'high']
                 ].values
@@ -148,22 +135,22 @@ class DataCleaner:
     def remove_outliers(self, df: pd.DataFrame, ticker: str = '',
                        price_col: str = 'close') -> 'DataCleaner':
         """
-        检测并处理异常价格跳变
+        檢測並處理異常價格跳變
         
-        使用两种方法联合检测：
-        1. 绝对阈值: 单日涨跌幅超过阈值倍数的跳变
-        2. 滚动标准差: 基于滚动窗口的Z-score检测
+        使用兩種方法聯合檢測：
+        1. 絕對閾值: 單日漲跌幅超過閾值倍數的跳變
+        2. 滾動標準差: 基於滾動窗口的Z-score檢測
         
-        对检测到的异常值采用插值修正而非直接删除，
-        以保持时间序列的完整性。
+        對檢測到的異常值採用插值修正而非直接刪除，
+        以保持時間序列的完整性。
         
-        时间复杂度: O(n)，n为数据行数
-        空间复杂度: O(n)
+        時間複雜度: O(n)，n為數據行數
+        空間複雜度: O(n)
         
-        参数:
-            df: 待处理的DataFrame（会被就地修改）
-            ticker: 股票代码
-            price_col: 价格列名（默认'close'）
+        參數:
+            df: 待處理的DataFrame（會被就地修改）
+            ticker: 股票代碼
+            price_col: 價格列名（默認'close'）
         
         返回:
             self
@@ -177,33 +164,33 @@ class DataCleaner:
         if n < 3:
             return self
         
-        # 方法1: 检测单日百分比变化异常
-        # 计算日收益率，标记超过阈值的位置
+        # 方法1: 檢測單日百分比變化異常
+        # 計算日收益率，標記超過閾值的位置
         daily_returns = np.abs(np.diff(prices) / np.where(prices[:-1] == 0, 1, prices[:-1]))
         spike_mask = np.concatenate([[False], daily_returns > self.config.price_spike_threshold])
         
-        # 方法2: 滚动Z-score检测（基于20日窗口）
+        # 方法2: 滾動Z-score檢測（基於20日窗口）
         if n >= 20:
             rolling_mean = pd.Series(prices).rolling(20, min_periods=5).mean().values
             rolling_std = pd.Series(prices).rolling(20, min_periods=5).std().values
             rolling_std = np.where(rolling_std == 0, 1, rolling_std)  # 避免除零
             
             z_scores = np.abs((prices - rolling_mean) / rolling_std)
-            z_mask = z_scores > 5  # Z-score > 5 视为异常
+            z_mask = z_scores > 5  # Z-score > 5 視為異常
             
-            # 合并两种方法的结果
+            # 合併兩種方法的結果
             outlier_mask = spike_mask | z_mask
         else:
             outlier_mask = spike_mask
         
         outlier_count = outlier_mask.sum()
         if outlier_count > 0:
-            # 不对异常值进行直接删除，而是用插值替换
+            # 不對異常值進行直接刪除，而是用插值替換
             df.loc[df.index[outlier_mask], price_col] = np.nan
             
             self._log_action(
                 'mark_outliers', ticker,
-                f'标记 {outlier_count} 个异常价格点（共{len(df)}行）',
+                f'標記 {outlier_count} 個異常價格點（共{len(df)}行）',
                 before=outlier_count
             )
         
@@ -215,35 +202,35 @@ class DataCleaner:
         splits: Optional[pd.Series] = None
     ) -> 'DataCleaner':
         """
-        处理公司行为导致的跳空
+        處理公司行為導致的跳空
         
-        核心问题：分红和拆股会导致股价出现"假跳空"，
-        如果不处理，技术指标和回测结果都会失真。
+        核心問題：分紅和拆股會導致股價出現"假跳空"，
+        如果不處理，技術指標和回測結果都會失真。
         
-        处理方式：
-        - 分股(Stock Split): 对分股前的价格按分股比例反向调整
-        - 分红(Cash Dividend): 对除息日前的价格减去分红金额
+        處理方式：
+        - 分股(Stock Split): 對分股前的價格按分股比例反向調整
+        - 分紅(Cash Dividend): 對除息日前的價格減去分紅金額
         
-        注意：yfinance 的 auto_adjust=True 已自动处理，
-        这里提供手动处理能力以应对自定义数据源。
+        注意：yfinance 的 auto_adjust=True 已自動處理，
+        這裡提供手動處理能力以應對自定義數據源。
         
-        参数:
-            df: 价格DataFrame
-            ticker: 股票代码
-            dividends: 分红序列（日期索引）
+        參數:
+            df: 價格DataFrame
+            ticker: 股票代碼
+            dividends: 分紅序列（日期索引）
             splits: 分股序列（日期索引）
         
         返回:
             self
         """
         if splits is not None and not splits.empty:
-            # 分股调整：例如2拆1（split=2），分股前价格除以2
-            # 从后向前处理，累积调整因子
+            # 分股調整：例如2拆1（split=2），分股前價格除以2
+            # 從後向前處理，累積調整因子
             cumulative_factor = 1.0
             for split_date, split_ratio in splits.sort_index(ascending=False).items():
                 # split_ratio: 2.0 表示 2-for-1 split
                 cumulative_factor *= split_ratio
-                # 调整 split_date 之前的所有价格
+                # 調整 split_date 之前的所有價格
                 if split_date in df.index:
                     mask_before = df.index < split_date
                     for col in ['open', 'high', 'low', 'close']:
@@ -252,12 +239,12 @@ class DataCleaner:
                 
                 self._log_action(
                     'adjust_split', ticker,
-                    f'分股调整: {split_ratio}-for-1 @ {split_date.date()}',
+                    f'分股調整: {split_ratio}-for-1 @ {split_date.date()}',
                     before=split_ratio
                 )
         
         if dividends is not None and not dividends.empty:
-            # 分红调整：除息日前价格减去分红金额
+            # 分紅調整：除息日前價格減去分紅金額
             for div_date, div_amount in dividends.items():
                 if div_date in df.index:
                     mask_before = df.index < div_date
@@ -267,7 +254,7 @@ class DataCleaner:
                     
                     self._log_action(
                         'adjust_dividend', ticker,
-                        f'分红调整: ${div_amount:.4f} @ {div_date.date()}',
+                        f'分紅調整: ${div_amount:.4f} @ {div_date.date()}',
                         before=div_amount
                     )
         
@@ -276,17 +263,17 @@ class DataCleaner:
     def fill_missing(self, df: pd.DataFrame, ticker: str = '',
                     max_gap: int = 5) -> 'DataCleaner':
         """
-        填充缺失数据
+        填充缺失數據
         
-        填充策略（按优先级）：
-        1. 前向填充 (forward fill): 用前一个有效值填充
-        2. 线性插值 (linear interpolation): 用于价格列的小段缺失
-        3. 零填充: 成交量缺失填0（表示无交易）
+        填充策略（按優先級）：
+        1. 前向填充 (forward fill): 用前一個有效值填充
+        2. 線性插值 (linear interpolation): 用於價格列的小段缺失
+        3. 零填充: 成交量缺失填0（表示無交易）
         
-        参数:
-            df: 待填充的DataFrame（会被就地修改）
-            ticker: 股票代码
-            max_gap: 最大填充间隔，超过此天数的缺失保留为NaN
+        參數:
+            df: 待填充的DataFrame（會被就地修改）
+            ticker: 股票代碼
+            max_gap: 最大填充間隔，超過此天數的缺失保留為NaN
         
         返回:
             self
@@ -296,7 +283,7 @@ class DataCleaner:
         
         nan_before = df.isna().sum().sum()
         
-        # 确保索引是日期类型
+        # 確保索引是日期類型
         if not isinstance(df.index, pd.DatetimeIndex):
             try:
                 df.index = pd.to_datetime(df.index)
@@ -306,7 +293,7 @@ class DataCleaner:
         price_cols = [c for c in ['open', 'high', 'low', 'close'] if c in df.columns]
         
         for col in price_cols:
-            # 先前向填充，再线性插值
+            # 先前向填充，再線性插值
             df[col] = df[col].ffill(limit=max_gap).interpolate(method='linear', limit=max_gap)
         
         # 成交量缺失填0
@@ -319,7 +306,7 @@ class DataCleaner:
         if filled_count > 0:
             self._log_action(
                 'fill_missing', ticker,
-                f'填充了 {filled_count} 个缺失值',
+                f'填充了 {filled_count} 個缺失值',
                 before=nan_before, after=nan_after
             )
         
@@ -328,18 +315,18 @@ class DataCleaner:
     def detect_survivorship_bias(self, df: pd.DataFrame, ticker: str,
                                  last_date: Optional[str] = None) -> 'DataCleaner':
         """
-        检测并标记幸存者偏差
+        檢測並標記倖存者偏差
         
-        问题：如果只使用"当前仍然存活"的股票做回测，
-        会忽略那些已经退市/破产的股票，导致回测结果虚高。
+        問題：如果只使用"當前仍然存活"的股票做回測，
+        會忽略那些已經退市/破產的股票，導致回測結果虛高。
         
-        标记方式：在DataFrame中添加 'delisted' 列，
-        如果最后交易日期早于预期结束日期，标记为 True。
+        標記方式：在DataFrame中添加 'delisted' 列，
+        如果最後交易日期早於預期結束日期，標記為 True。
         
-        参数:
-            df: 股票数据DataFrame
-            ticker: 股票代码
-            last_date: 预期最后交易日期
+        參數:
+            df: 股票數據DataFrame
+            ticker: 股票代碼
+            last_date: 預期最後交易日期
         
         返回:
             self
@@ -352,11 +339,11 @@ class DataCleaner:
         if last_date:
             expected_end = pd.Timestamp(last_date)
             if data_last_date < expected_end - pd.Timedelta(days=30):
-                # 数据提前终止超过30天，可能已下市
+                # 數據提前終止超過30天，可能已下市
                 df['delisted'] = True
                 self._log_action(
                     'flag_survivorship', ticker,
-                    f'数据终止于 {data_last_date.date()}，预期 {expected_end.date()}，标记为可能已下市'
+                    f'數據終止於 {data_last_date.date()}，預期 {expected_end.date()}，標記為可能已下市'
                 )
             else:
                 df['delisted'] = False
@@ -366,11 +353,11 @@ class DataCleaner:
         return self
     
     def get_audit_log(self) -> List[Dict]:
-        """获取清洗操作的审计日志"""
+        """獲取清洗操作的審計日誌"""
         return self._audit_log.copy()
     
     def get_summary(self) -> Dict:
-        """获取清洗操作的摘要统计"""
+        """獲取清洗操作的摘要統計"""
         return {
             'total_actions': self._modified_count,
             'action_types': list(set(log['action'] for log in self._audit_log)),
@@ -378,6 +365,6 @@ class DataCleaner:
         }
     
     def reset(self) -> None:
-        """重置审计日志和计数器"""
+        """重置審計日誌和計數器"""
         self._audit_log.clear()
         self._modified_count = 0

@@ -1,14 +1,4 @@
-"""
-实时模型推理模块
-
-加载训练好的Transformer模型（encoder-only架构），基于最新特征进行预测。
-模型输出：5日方向分类 + 5日收益率回归。
-
-使用方式:
-    infer = ModelInference()
-    signal = infer.predict('AAPL')  
-    # → {'direction': 1, 'confidence': 0.72, 'predicted_return': 0.015}
-"""
+"""Inference wrapper for the StockTransformer model."""
 
 import logging
 import sys
@@ -27,14 +17,14 @@ from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_PATH = MODELS_DIR / 'transformer_stock_latest.pt'  # 最新训练模型
+DEFAULT_MODEL_PATH = MODELS_DIR / 'transformer_stock_latest.pt'  # 最新訓練模型
 
 
-# 直接使用训练时的StockTransformer架构（ml_model.transformer）
-# 不再定义独立的InferenceTransformer，确保架构完全匹配
+# 直接使用訓練時的StockTransformer架構（ml_model.transformer）
+# 不再定義獨立的InferenceTransformer，確保架構完全匹配
 
 class ModelInference:
-    """实时模型推理引擎"""
+    """實時模型推理引擎"""
     
     def __init__(
         self,
@@ -66,12 +56,12 @@ class ModelInference:
         self.scaler: Optional[StandardScaler] = None
         self._loaded = False
         self._ticker_features: Dict[str, np.ndarray] = {}
-        self._feature_count: int = 24  # 默认，加载后更新
+        self._feature_count: int = 24  # 默認，加載後更新
         
         logger.info(f"ModelInference: device={self.device}")
     
     def load(self) -> bool:
-        """加载模型和scaler"""
+        """加載模型和scaler"""
         if self._loaded:
             return True
         
@@ -94,26 +84,26 @@ class ModelInference:
                 state_dict = checkpoint['state_dict']
             else:
                 state_dict = checkpoint
-            # state_dict已在上面获取，metadata用于元信息
+            # state_dict已在上面獲取，metadata用於元信息
             metadata = checkpoint.get('metadata', {})
             
-            # 推断特征数
+            # 推斷特徵數
             input_proj_weight = state_dict.get('input_proj.weight')
             if input_proj_weight is not None:
                 self._feature_count = input_proj_weight.shape[1]
-                logger.info(f"特征数: {self._feature_count}")
+                logger.info(f"特徵數: {self._feature_count}")
             
-            # 创建模型 (使用StockTransformer，与训练时完全一致)
-            # 注意: StockTransformer使用config.features确定输入维度
-            # 如果checkpoint特征数与config不一致，自动适配
+            # 創建模型 (使用StockTransformer，與訓練時完全一致)
+            # 注意: StockTransformer使用config.features確定輸入維度
+            # 如果checkpoint特徵數與config不一致，自動適配
             n_features_in_config = len(self.config.features)
             if self._feature_count != n_features_in_config:
                 logger.warning(
-                    f'特征数不匹配: checkpoint={self._feature_count}, config={n_features_in_config}. '
-                    f'使用checkpoint的特征数创建模型。'
+                    f'特徵數不匹配: checkpoint={self._feature_count}, config={n_features_in_config}. '
+                    f'使用checkpoint的特徵數創建模型。'
                 )
-                # 临时调整config特征数以匹配checkpoint
-                # 注意: features列表可能更短，只取前_feature_count个
+                # 臨時調整config特徵數以匹配checkpoint
+                # 注意: features列表可能更短，只取前_feature_count個
                 self.config.features = (
                     self.config.features[:self._feature_count]
                     if n_features_in_config >= self._feature_count
@@ -126,34 +116,34 @@ class ModelInference:
             self.model.to(self.device)
             self.model.eval()
             
-            logger.info(f"模型加载: {len(matched)} 参数匹配, "
-                       f"缺失 {len(state_dict)-len(matched)} 键")
+            logger.info(f"模型加載: {len(matched)} 參數匹配, "
+                       f"缺失 {len(state_dict)-len(matched)} 鍵")
             
-            # 恢复或创建scaler
+            # 恢復或創建scaler
             self._load_scaler()
             
             self._loaded = True
             return True
             
         except Exception as e:
-            logger.error(f"模型加载失败: {e}")
+            logger.error(f"模型加載失敗: {e}")
             import traceback
             traceback.print_exc()
             return False
     
     def _load_scaler(self):
-        """加载或创建特征标准化器"""
+        """加載或創建特徵標準化器"""
         self.scaler = StandardScaler()
         storage = ParquetStorage(PROCESSED_DATA_DIR)
         
-        # 自动发现所有已处理股票的特征数据
+        # 自動發現所有已處理股票的特徵數據
         all_tickers = set()
         for f in storage.list_keys():
             if '_features' in f:
                 t = f.replace('_features.parquet', '').replace('_features', '')
                 all_tickers.add(t)
         tickers = sorted(all_tickers)
-        logger.info(f'Scaler拟合: 发现 {len(tickers)} 只股票的特征数据')
+        logger.info(f'Scaler擬合: 發現 {len(tickers)} 只股票的特徵數據')
         
         for ticker in tickers:
             try:
@@ -168,12 +158,12 @@ class ModelInference:
                 continue
         
         if hasattr(self.scaler, 'n_features_in_'):
-            logger.info(f"Scaler就绪: {self.scaler.n_features_in_} 特征")
+            logger.info(f"Scaler就緒: {self.scaler.n_features_in_} 特徵")
         else:
-            logger.warning("Scaler未拟合，将使用在线标准化")
+            logger.warning("Scaler未擬合，將使用在線標準化")
     
     def load_ticker_features(self, ticker: str) -> bool:
-        """加载单只股票特征"""
+        """加載單只股票特徵"""
         if ticker in self._ticker_features:
             return True
         
@@ -185,7 +175,7 @@ class ModelInference:
             
             available_f = [f for f in self.config.features if f in df.columns]
             features = df[available_f].dropna().values
-            # 如果实际特征数少于模型期望，用零填充缺失列
+            # 如果實際特徵數少於模型期望，用零填充缺失列
             if features.shape[1] < self._feature_count:
                 pad = np.zeros((features.shape[0], self._feature_count - features.shape[1]))
                 features = np.hstack([features[:, :self._feature_count], pad])
@@ -194,7 +184,7 @@ class ModelInference:
             self._ticker_features[ticker] = features
             return True
         except Exception as e:
-            logger.debug(f"加载 {ticker} 特征失败: {e}")
+            logger.debug(f"加載 {ticker} 特徵失敗: {e}")
             return False
     
     def get_model_info(self) -> dict:
@@ -225,7 +215,7 @@ class ModelInference:
 
     def predict(self, ticker: str) -> Optional[Dict]:
         """
-        对单只股票生成预测
+        對單只股票生成預測
         
         返回:
             {'direction': 1, 'confidence': 0.72, 'predicted_return': 0.015}
@@ -262,12 +252,12 @@ class ModelInference:
             cls_probs = torch.sigmoid(cls_out).squeeze().cpu().numpy()
             reg_vals = reg_out.squeeze().cpu().numpy()
             
-            # 方向预测: 取5日平均概率
+            # 方向預測: 取5日平均概率
             avg_prob = float(np.mean(cls_probs))
             direction = 1 if avg_prob > 0.5 else 0
             predicted_return = float(np.mean(reg_vals))
             
-            # 置信度: 距离0.5的偏差映射到0.50-0.95
+            # 置信度: 距離0.5的偏差映射到0.50-0.95
             confidence = 0.50 + min(abs(avg_prob - 0.5) * 0.9, 0.45)
             
             return {
@@ -278,7 +268,7 @@ class ModelInference:
             }
             
         except Exception as e:
-            logger.debug(f"预测 {ticker} 失败: {e}")
+            logger.debug(f"預測 {ticker} 失敗: {e}")
             return None
     
     def batch_predict(self, tickers: List[str]) -> Dict[str, Optional[Dict]]:

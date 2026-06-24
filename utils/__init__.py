@@ -1,5 +1,5 @@
 # utils/__init__.py
-# 美股量化交易系统 - 工具模块入口
+# 美股量化交易系統 - 工具模塊入口
 from utils.constants import (
     MarketHours, RegSHO, WashSaleRule, PDT_RULES,
     EXCHANGE_HOLIDAYS, BROKER_CODES
@@ -18,10 +18,10 @@ __all__ = [
     # 常量
     'MarketHours', 'RegSHO', 'WashSaleRule', 'PDT_RULES',
     'EXCHANGE_HOLIDAYS', 'BROKER_CODES',
-    # 异常
+    # 異常
     'QuantError', 'DataError', 'ModelError', 'TradingError',
     'RiskError', 'ComplianceError', 'ConfigurationError',
-    # 工具函数
+    # 工具函數
     'Timer', 'safe_divide', 'rolling_window',
     'validate_ticker', 'format_currency', 'format_pct',
     'is_market_open', 'next_trading_day', 'previous_trading_day',

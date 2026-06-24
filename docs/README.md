@@ -1,118 +1,118 @@
-# 美股量化交易系统 — 完整技术文档
+# 美股量化交易系統 — 完整技術文檔
 
-> **版本**: 2.0 | **最后更新**: 2026-06-21 | **Python**: 3.9+ | **平台**: macOS / Linux
+> **版本**: 2.0 | **最後更新**: 2026-06-21 | **Python**: 3.9+ | **平臺**: macOS / Linux
 
 ---
 
-## 目录
+## 目錄
 
-1. [系统概述](#1-系统概述)
-2. [文档导航](#2-文档导航)
-3. [快速开始 (5分钟)](#3-快速开始)
-4. [系统架构概览](#4-系统架构概览)
+1. [系統概述](#1-系統概述)
+2. [文檔導航](#2-文檔導航)
+3. [快速開始 (5分鐘)](#3-快速開始)
+4. [系統架構概覽](#4-系統架構概覽)
 5. [核心功能](#5-核心功能)
-6. [技术栈](#6-技术栈)
-7. [目录结构](#7-目录结构)
+6. [技術棧](#6-技術棧)
+7. [目錄結構](#7-目錄結構)
 
 ---
 
-## 1. 系统概述
+## 1. 系統概述
 
-本系统是一套**美股量化实盘交易系统**，具备以下能力：
+本系統是一套**美股量化實盤交易系統**，具備以下能力：
 
-- 🔄 **实时行情抓取**：Yahoo Finance v7 API 批量获取 40 只美股实时价格
-- 🧠 **AI 预测模型**：基于 Transformer 架构的时序预测模型（StockTransformer）
-- 📊 **统计预测引擎**：轻量级 RealtimePredictor 作为 ML 模型的 fallback
-- ⚖️ **动态杠杆引擎**：多因子 Kelly 公式 + 波动率调节 + 绩效反馈
-- 📈 **实时仪表盘**：K线图、基准对比、持仓监控、交易记录
-- 🛡️ **风险控制**：止盈止损、最大回撤约束、保证金监控、连败强制减仓
-- 💾 **状态持久化**：每分钟自动保存，重启后完整恢复
+- 🔄 **實時行情抓取**：Yahoo Finance v7 API 批量獲取 40 只美股實時價格
+- 🧠 **AI 預測模型**：基於 Transformer 架構的時序預測模型（StockTransformer）
+- 📊 **統計預測引擎**：輕量級 RealtimePredictor 作為 ML 模型的 fallback
+- ⚖️ **動態槓桿引擎**：多因子 Kelly 公式 + 波動率調節 + 績效反饋
+- 📈 **實時儀錶盤**：K線圖、基準對比、持倉監控、交易記錄
+- 🛡️ **風險控制**：止盈止損、最大回撤約束、保證金監控、連敗強制減倉
+- 💾 **狀態持久化**：每分鐘自動保存，重啟後完整恢復
 
-**核心理念**：反马丁格尔策略 — 胜率高时加码，连败时减仓。
+**核心理念**：反馬丁格爾策略 — 勝率高時加碼，連敗時減倉。
 
 ---
 
-## 2. 文档导航
+## 2. 文檔導航
 
-| 文档 | 说明 |
+| 文檔 | 說明 |
 |------|------|
-| **[README.md](README.md)** | 📖 本文档 — 系统概述与快速开始 |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | 🏗️ 系统架构、数据流、模块交互 |
-| **[ALGORITHMS.md](ALGORITHMS.md)** | 🧮 算法详解：Transformer、Kelly、预测器 |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)** | 🚀 一键部署、新机配置、launchd 服务 |
-| **[setup.sh](setup.sh)** | ⚡ 一键环境配置脚本 |
-| **[API_REFERENCE.md](API_REFERENCE.md)** | 🔌 全部 REST API 端点文档 |
-| **[CODE_STRUCTURE.md](CODE_STRUCTURE.md)** | 📁 每个文件的职责与依赖 |
-| **[CONFIGURATION.md](CONFIGURATION.md)** | ⚙️ 全部配置项详解 |
+| **[README.md](README.md)** | 📖 本文檔 — 系統概述與快速開始 |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | 🏗️ 系統架構、數據流、模塊交互 |
+| **[ALGORITHMS.md](ALGORITHMS.md)** | 🧮 算法詳解：Transformer、Kelly、預測器 |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)** | 🚀 一鍵部署、新機配置、launchd 服務 |
+| **[setup.sh](setup.sh)** | ⚡ 一鍵環境配置腳本 |
+| **[API_REFERENCE.md](API_REFERENCE.md)** | 🔌 全部 REST API 端點文檔 |
+| **[CODE_STRUCTURE.md](CODE_STRUCTURE.md)** | 📁 每個文件的職責與依賴 |
+| **[CONFIGURATION.md](CONFIGURATION.md)** | ⚙️ 全部配置項詳解 |
 
 ---
 
-## 3. 快速开始
+## 3. 快速開始
 
-### 前置条件
+### 前置條件
 
-- macOS 或 Linux (推荐 Apple Silicon / x86_64)
+- macOS 或 Linux (推薦 Apple Silicon / x86_64)
 - Python 3.9+
 - Git
 
-### 3.1 一键部署
+### 3.1 一鍵部署
 
 ```bash
-# 克隆项目
+# 克隆項目
 git clone <repo-url> 美股量化交易
 cd 美股量化交易
 
-# 一键配置环境
+# 一鍵配置環境
 bash docs/setup.sh
 
-# 启动交易系统
+# 啟動交易系統
 screen -dmS trading python3 -u live_trading/web_server.py
 
-# 验证
+# 驗證
 curl http://localhost:8080/api/status
 ```
 
-### 3.2 手动部署
+### 3.2 手動部署
 
 ```bash
-# 创建虚拟环境
+# 創建虛擬環境
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 安装依赖
+# 安裝依賴
 pip install -r requirements.txt
 
-# 启动
+# 啟動
 screen -dmS trading python3 -u live_trading/web_server.py
 ```
 
-### 3.3 访问仪表盘
+### 3.3 訪問儀錶盤
 
-浏览器打开 `http://localhost:8080`
+瀏覽器打開 `http://localhost:8080`
 
 ---
 
-## 4. 系统架构概览
+## 4. 系統架構概覽
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Web 仪表盘 (Flask)                     │
-│  localhost:8080  →  dashboard.html  →  实时轮询 /api/*   │
+│                    Web 儀錶盤 (Flask)                     │
+│  localhost:8080  →  dashboard.html  →  實時輪詢 /api/*   │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────┼──────────────────────────────────┐
 │              live_trading/web_server.py                  │
 │  ┌─────────────┐  ┌──────────┐  ┌───────────────────┐  │
 │  │ tick_engine  │  │ REST API │  │ state_persistence │  │
-│  │ (每秒1次)    │  │ (8端点)  │  │ (每分钟保存)      │  │
+│  │ (每秒1次)    │  │ (8端點)  │  │ (每分鐘保存)      │  │
 │  └──────┬───────┘  └──────────┘  └───────────────────┘  │
 │         │                                                │
 │  ┌──────┼──────────────────────────────────────────┐    │
-│  │      ▼ 数据流                                    │    │
-│  │  Yahoo Finance ─→ 价格 ─→ 持仓更新 ─→ 交易决策  │    │
+│  │      ▼ 數據流                                    │    │
+│  │  Yahoo Finance ─→ 價格 ─→ 持倉更新 ─→ 交易決策  │    │
 │  │                      │                           │    │
 │  │                      ▼                           │    │
-│  │               ML模型预测 ─→ 杠杆计算 ─→ 执行     │    │
+│  │               ML模型預測 ─→ 槓桿計算 ─→ 執行     │    │
 │  └─────────────────────────────────────────────────┘    │
 ├─────────────────────────────────────────────────────────┤
 │  Portfolio │ Predictor │ LeverageEngine │ Benchmark     │
@@ -124,85 +124,85 @@ screen -dmS trading python3 -u live_trading/web_server.py
 
 ## 5. 核心功能
 
-### 实时交易循环 (每秒)
+### 實時交易循環 (每秒)
 
-1. **价格更新** — Yahoo Finance v7 批量 API (12-60秒间隔)
-2. **持仓估值** — 计算市值、PnL、权重
-3. **ML 预测** — StockTransformer 输出方向 + 置信度
-4. **杠杆计算** — Kelly × 波动率 × 绩效 × 热度 × 回撤约束
-5. **交易决策** — 止盈/止损/预测卖出/时间平仓
-6. **状态保存** — 每60秒持久化到 `data/trading_state.json`
+1. **價格更新** — Yahoo Finance v7 批量 API (12-60秒間隔)
+2. **持倉估值** — 計算市值、PnL、權重
+3. **ML 預測** — StockTransformer 輸出方向 + 置信度
+4. **槓桿計算** — Kelly × 波動率 × 績效 × 熱度 × 回撤約束
+5. **交易決策** — 止盈/止損/預測賣出/時間平倉
+6. **狀態保存** — 每60秒持久化到 `data/trading_state.json`
 
-### 风险控制体系
+### 風險控制體系
 
-| 层级 | 机制 | 参数 |
+| 層級 | 機制 | 參數 |
 |------|------|------|
-| 仓位 | 单只最大占比 | 8% (杠杆模式12%) |
-| 止损 | 硬止损阈值 | -4% |
-| 止盈 | 获利了结 | +3% |
-| 杠杆 | Kelly动态 | 0.25x-2.0x |
-| 回撤 | 整体回撤约束 | 动态cap |
-| 连败 | 反马丁格尔 | 3连败→0.5x上限 |
+| 倉位 | 單只最大佔比 | 8% (槓桿模式12%) |
+| 止損 | 硬止損閾值 | -4% |
+| 止盈 | 獲利了結 | +3% |
+| 槓桿 | Kelly動態 | 0.25x-2.0x |
+| 回撤 | 整體回撤約束 | 動態cap |
+| 連敗 | 反馬丁格爾 | 3連敗→0.5x上限 |
 
 ---
 
-## 6. 技术栈
+## 6. 技術棧
 
-| 层级 | 技术 |
+| 層級 | 技術 |
 |------|------|
-| 语言 | Python 3.9+ |
+| 語言 | Python 3.9+ |
 | Web框架 | Flask (threaded) |
-| 深度学习 | PyTorch 2.0+ |
-| 数据处理 | NumPy, Pandas, SciPy |
-| 数据源 | Yahoo Finance (yfinance) |
-| 存储 | JSON (状态), Parquet (训练数据) |
+| 深度學習 | PyTorch 2.0+ |
+| 數據處理 | NumPy, Pandas, SciPy |
+| 數據源 | Yahoo Finance (yfinance) |
+| 存儲 | JSON (狀態), Parquet (訓練數據) |
 | 前端 | Vanilla JS + Lightweight Charts |
-| 进程管理 | screen / launchd |
-| 系统监控 | psutil |
+| 進程管理 | screen / launchd |
+| 系統監控 | psutil |
 
 ---
 
-## 7. 目录结构
+## 7. 目錄結構
 
 ```
 美股量化交易（New）/
-├── live_trading/           # 核心交易系统
-│   ├── web_server.py       # Flask服务器 + 交易引擎 (1326行)
-│   ├── portfolio.py        # 持仓管理 + P&L计算 (581行)
-│   ├── predictor.py        # 统计预测引擎 (446行)
-│   ├── benchmark.py        # 纳指基准对比 (409行)
-│   ├── leverage_engine.py  # 动态杠杆引擎 (410行)
-│   ├── market_clock.py     # 美股交易时钟 (461行)
-│   ├── state_persistence.py # 状态持久化 (399行)
-│   ├── accuracy_tracker.py # 预测准确率追踪
+├── live_trading/           # 核心交易系統
+│   ├── web_server.py       # Flask伺服器 + 交易引擎 (1326行)
+│   ├── portfolio.py        # 持倉管理 + P&L計算 (581行)
+│   ├── predictor.py        # 統計預測引擎 (446行)
+│   ├── benchmark.py        # 納指基準對比 (409行)
+│   ├── leverage_engine.py  # 動態槓桿引擎 (410行)
+│   ├── market_clock.py     # 美股交易時鐘 (461行)
+│   ├── state_persistence.py # 狀態持久化 (399行)
+│   ├── accuracy_tracker.py # 預測準確率追蹤
 │   ├── model_inference.py  # ML模型推理
 │   ├── templates/
-│   │   └── dashboard.html  # Web仪表盘 (646行)
-│   └── static/             # 静态资源
-├── ml_model/               # ML训练
+│   │   └── dashboard.html  # Web儀錶盤 (646行)
+│   └── static/             # 靜態資源
+├── ml_model/               # ML訓練
 │   ├── transformer.py      # StockTransformer模型 (739行)
-│   ├── trainer.py          # 训练器 (1017行)
-│   └── data_loader.py      # 数据加载器
+│   ├── trainer.py          # 訓練器 (1017行)
+│   └── data_loader.py      # 數據加載器
 ├── config/
 │   └── settings.py         # 全局配置 (399行)
-├── backtesting/            # 回测引擎
-├── data_pipeline/          # 数据管道
-├── crawler/                # 新闻爬虫
-├── scripts/                # 工具脚本
-│   ├── quick_train.py      # 快速训练
-│   ├── train_100ep_robust.py # 100轮训练
-│   ├── build_sentiment_features.py # 情感特征构建
-│   └── codex_monitor.py    # 系统监控
-├── docs/                   # 📖 技术文档
-├── work_logs/              # 工作日志
-├── data/                   # 运行时数据
-├── models/                 # 训练好的模型
-├── logs/                   # 运行日志
-├── requirements.txt        # Python依赖
+├── backtesting/            # 回測引擎
+├── data_pipeline/          # 數據管道
+├── crawler/                # 新聞爬蟲
+├── scripts/                # 工具腳本
+│   ├── quick_train.py      # 快速訓練
+│   ├── train_100ep_robust.py # 100輪訓練
+│   ├── build_sentiment_features.py # 情感特徵構建
+│   └── codex_monitor.py    # 系統監控
+├── docs/                   # 📖 技術文檔
+├── work_logs/              # 工作日誌
+├── data/                   # 運行時數據
+├── models/                 # 訓練好的模型
+├── logs/                   # 運行日誌
+├── requirements.txt        # Python依賴
 ├── AGENTS.md               # AI工作指引
-└── GUARDRAILS.md           # 错误清单 + 禁区
+└── GUARDRAILS.md           # 錯誤清單 + 禁區
 ```
 
 ---
 
-> 📖 **下一步**: 阅读 [ARCHITECTURE.md](ARCHITECTURE.md) 了解系统架构细节
+> 📖 **下一步**: 閱讀 [ARCHITECTURE.md](ARCHITECTURE.md) 了解系統架構細節

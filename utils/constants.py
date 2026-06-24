@@ -1,13 +1,4 @@
-"""
-美股量化交易系统 - 常量定义模块
-
-集中管理系统中所有硬编码的常量值，包括：
-- 交易时段定义（美东时间）
-- SEC监管规则常量
-- 美股交易所假期日历
-- 券商代码映射
-- 风险阈值常量
-"""
+"""Trading and model constants."""
 
 from datetime import time, date
 from typing import Dict, List, Tuple
@@ -15,105 +6,105 @@ from dataclasses import dataclass, field
 
 
 # ============================================================================
-# 交易时段常量（美东时间 ET）
+# 交易時段常量（美東時間 ET）
 # ============================================================================
 @dataclass(frozen=True)
 class MarketHours:
     """
-    美股交易时段定义（美东时间）
+    美股交易時段定義（美東時間）
     
-    时段划分：
-    - 盘前(Pre-Market): 04:00 - 09:30 ET  (流动性较低，波动较大)
-    - 正常盘(Regular):  09:30 - 16:00 ET  (主力交易时段)
-    - 盘后(After-Hours): 16:00 - 20:00 ET (流动性较低，波动较大)
+    時段劃分：
+    - 盤前(Pre-Market): 04:00 - 09:30 ET  (流動性較低，波動較大)
+    - 正常盤(Regular):  09:30 - 16:00 ET  (主力交易時段)
+    - 盤後(After-Hours): 16:00 - 20:00 ET (流動性較低，波動較大)
     """
-    PRE_MARKET_START: time = time(4, 0)    # 盘前开始
-    REGULAR_START: time = time(9, 30)      # 正常盘开始
-    REGULAR_END: time = time(16, 0)        # 正常盘结束
-    AFTER_HOURS_END: time = time(20, 0)    # 盘后结束
+    PRE_MARKET_START: time = time(4, 0)    # 盤前開始
+    REGULAR_START: time = time(9, 30)      # 正常盤開始
+    REGULAR_END: time = time(16, 0)        # 正常盤結束
+    AFTER_HOURS_END: time = time(20, 0)    # 盤後結束
     
     # 美股主要交易所
     PRIMARY_EXCHANGES: Tuple[str, ...] = (
         'NYSE', 'NASDAQ', 'ARCA', 'BATS', 'IEX', 'EDGX'
     )
     
-    # 暗池（Dark Pools）标识
+    # 暗池（Dark Pools）標識
     DARK_POOL_VENUES: Tuple[str, ...] = (
         'DRCTEDGE', 'CROSSFINDER', 'SIGMAX2', 'LEVEL'
     )
 
 
 # ============================================================================
-# SEC 监管规则常量
+# SEC 監管規則常量
 # ============================================================================
 @dataclass(frozen=True)
 class RegSHO:
     """
-    Regulation SHO - 做空规则相关常量
+    Regulation SHO - 做空規則相關常量
     
-    Reg SHO (Regulation of Short Sales) 是SEC对做空行为的主要监管框架，
-    包含以下核心规则：
+    Reg SHO (Regulation of Short Sales) 是SEC對做空行為的主要監管框架，
+    包含以下核心規則：
     - Rule 201 (Uptick Rule/Alternative Uptick Rule):
-      当某股票日内跌幅超过前收盘价10%时，触发断路器，
-      剩余交易日及下一个交易日内，做空只能在价格高于当前全国最优报价(ask)时执行。
+      當某股票日內跌幅超過前收盤價10%時，觸發斷路器，
+      剩餘交易日及下一個交易日內，做空只能在價格高於當前全國最優報價(ask)時執行。
     - Locate Requirement (Rule 203(b)(1)):
-      做空前必须确认可以借到股票（locate），禁止裸卖空(naked short selling)。
+      做空前必須確認可以借到股票（locate），禁止裸賣空(naked short selling)。
     """
-    # Uptick Rule触发阈值（跌幅百分比）
+    # Uptick Rule觸發閾值（跌幅百分比）
     CIRCUIT_BREAKER_THRESHOLD: float = 0.10  # 10%
     
-    # 断路器有效期限（交易日）
+    # 斷路器有效期限（交易日）
     CIRCUIT_BREAKER_DURATION_DAYS: int = 1
     
-    # 做空借券确认有效期（Reg SHO Rule 204: T+3结算）
+    # 做空借券確認有效期（Reg SHO Rule 204: T+3結算）
     LOCATE_VALIDITY_DAYS: int = 3
 
 
 @dataclass(frozen=True)
 class WashSaleRule:
     """
-    洗售规则 (Wash Sale Rule) 相关常量
+    洗售規則 (Wash Sale Rule) 相關常量
     
-    IRS规定：如果在卖出亏损股票的前后30天内（共61天窗口）
-    买入"实质上相同"(substantially identical)的证券，
-    则该亏损不可抵税，需调整新买入股票的成本基础。
+    IRS規定：如果在賣出虧損股票的前後30天內（共61天窗口）
+    買入"實質上相同"(substantially identical)的證券，
+    則該虧損不可抵稅，需調整新買入股票的成本基礎。
     """
-    # 洗售窗口（前后各30天，共61天）
+    # 洗售窗口（前後各30天，共61天）
     WINDOW_DAYS: int = 30
     
-    # 完整的洗售检查窗口大小
+    # 完整的洗售檢查窗口大小
     FULL_WINDOW_DAYS: int = 61
 
 
 @dataclass(frozen=True)
 class PDT_RULES:
     """
-    Pattern Day Trader 规则相关常量
+    Pattern Day Trader 規則相關常量
     
-    FINRA规定：任何在5个交易日内执行4次或以上日内交易
-    （同日开仓并平仓同一证券）的账户，将被标记为PDT。
-    PDT账户必须维持至少$25,000的账户净值（现金+证券市值），
-    否则将受到交易限制。
+    FINRA規定：任何在5個交易日內執行4次或以上日內交易
+    （同日開倉並平倉同一證券）的帳戶，將被標記為PDT。
+    PDT帳戶必須維持至少$25,000的帳戶淨值（現金+證券市值），
+    否則將受到交易限制。
     """
-    # PDT标记阈值：5个交易日内N次日内交易
+    # PDT標記閾值：5個交易日內N次日內交易
     DAY_TRADE_COUNT: int = 4
-    # PDT规则的滚动窗口（交易日）
+    # PDT規則的滾動窗口（交易日）
     ROLLING_WINDOW: int = 5
-    # PDT最低账户资金要求
+    # PDT最低帳戶資金要求
     MIN_EQUITY: float = 25_000.0
 
 
 # ============================================================================
-# 熔断机制常量 (LULD - Limit Up-Limit Down)
+# 熔斷機制常量 (LULD - Limit Up-Limit Down)
 # ============================================================================
 @dataclass(frozen=True)
 class LULD:
     """
-    LULD (Limit Up-Limit Down) 熔断机制
+    LULD (Limit Up-Limit Down) 熔斷機制
     
-    防止个股价格在短时间内出现极端波动。
-    根据股价和交易量将股票分为Tier 1和Tier 2，
-    不同层级的涨跌停幅度不同。
+    防止個股價格在短時間內出現極端波動。
+    根據股價和交易量將股票分為Tier 1和Tier 2，
+    不同層級的漲跌停幅度不同。
     """
     # Tier 1股票（S&P 500, Russell 1000, 部分ETF）
     TIER1_BANDS: Dict[str, float] = field(default_factory=lambda: {
@@ -123,7 +114,7 @@ class LULD:
         'regular': 0.10,
     })
     
-    # Tier 2股票（其余NMS股票）
+    # Tier 2股票（其餘NMS股票）
     TIER2_BANDS: Dict[str, float] = field(default_factory=lambda: {
         'open':    0.10, 
         '09:45':   0.10,
@@ -131,30 +122,30 @@ class LULD:
         'regular': 0.20,
     })
     
-    # 全市场熔断阈值（标普500指数）
+    # 全市場熔斷閾值（標普500指數）
     MARKET_CIRCUIT_BREAKERS: Dict[int, str] = field(default_factory=lambda: {
-        -7:  'Level 1: 交易暂停15分钟',
-        -13: 'Level 2: 交易暂停15分钟', 
-        -20: 'Level 3: 当日剩余时间停止交易',
+        -7:  'Level 1: 交易暫停15分鐘',
+        -13: 'Level 2: 交易暫停15分鐘', 
+        -20: 'Level 3: 當日剩餘時間停止交易',
     })
 
 
 # ============================================================================
 # 美股交易所假期（2025-2027）
-# 非完整列表，实际应接入交易所API或定期更新
+# 非完整列表，實際應接入交易所API或定期更新
 # ============================================================================
 EXCHANGE_HOLIDAYS: Dict[int, List[date]] = {
     2025: [
         date(2025, 1, 1),    # 元旦 New Year's Day
-        date(2025, 1, 20),   # 马丁·路德·金纪念日
-        date(2025, 2, 17),   # 总统日 Presidents' Day
-        date(2025, 4, 18),   # 耶稣受难日 Good Friday
-        date(2025, 5, 26),   # 阵亡将士纪念日 Memorial Day
-        date(2025, 6, 19),   # 六月节 Juneteenth
-        date(2025, 7, 4),    # 独立日 Independence Day
-        date(2025, 9, 1),    # 劳动节 Labor Day
-        date(2025, 11, 27),  # 感恩节 Thanksgiving
-        date(2025, 12, 25),  # 圣诞节 Christmas
+        date(2025, 1, 20),   # 馬丁·路德·金紀念日
+        date(2025, 2, 17),   # 總統日 Presidents' Day
+        date(2025, 4, 18),   # 耶穌受難日 Good Friday
+        date(2025, 5, 26),   # 陣亡將士紀念日 Memorial Day
+        date(2025, 6, 19),   # 六月節 Juneteenth
+        date(2025, 7, 4),    # 獨立日 Independence Day
+        date(2025, 9, 1),    # 勞動節 Labor Day
+        date(2025, 11, 27),  # 感恩節 Thanksgiving
+        date(2025, 12, 25),  # 聖誕節 Christmas
     ],
     2026: [
         date(2026, 1, 1), date(2026, 1, 19), date(2026, 2, 16),
@@ -170,7 +161,7 @@ EXCHANGE_HOLIDAYS: Dict[int, List[date]] = {
 
 
 # ============================================================================
-# 券商代码映射
+# 券商代碼映射
 # ============================================================================
 BROKER_CODES: Dict[str, str] = {
     'ibkr':         'Interactive Brokers',
@@ -182,20 +173,20 @@ BROKER_CODES: Dict[str, str] = {
 
 
 # ============================================================================
-# 技术指标默认参数
+# 技術指標默認參數
 # ============================================================================
 TECHNICAL_INDICATORS_DEFAULTS: Dict[str, int] = {
-    'sma_fast':        5,     # 快线均线周期
-    'sma_medium':      20,    # 中线均线周期
-    'sma_slow':        60,    # 慢线均线周期
-    'ema_fast':        12,    # 快线EMA
-    'ema_slow':        26,    # 慢线EMA
-    'macd_signal':     9,     # MACD信号线周期
-    'rsi_period':      14,    # RSI计算周期
-    'bb_period':       20,    # 布林带计算周期
-    'bb_std':          2,     # 布林带标准差倍数
-    'atr_period':      14,    # ATR计算周期
-    'volume_ma_period': 20,   # 成交量均线周期
+    'sma_fast':        5,     # 快線均線周期
+    'sma_medium':      20,    # 中線均線周期
+    'sma_slow':        60,    # 慢線均線周期
+    'ema_fast':        12,    # 快線EMA
+    'ema_slow':        26,    # 慢線EMA
+    'macd_signal':     9,     # MACD信號線周期
+    'rsi_period':      14,    # RSI計算周期
+    'bb_period':       20,    # 布林帶計算周期
+    'bb_std':          2,     # 布林帶標準差倍數
+    'atr_period':      14,    # ATR計算周期
+    'volume_ma_period': 20,   # 成交量均線周期
 }
 
 

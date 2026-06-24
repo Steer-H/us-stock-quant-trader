@@ -1,23 +1,4 @@
-"""
-交易系统状态持久化模块
-
-功能：
-- 将 PortfolioManager / AccuracyTracker / BenchmarkTracker 序列化为 JSON
-- 从 JSON 恢复完整交易状态
-- 自动保存 + 崩溃恢复
-
-序列化策略：
-- dataclass → dict → JSON
-- datetime → ISO 8601 字符串
-- deque → list
-- defaultdict → dict
-- set → list
-
-设计原则：
-- 保存文件: data/trading_state.json
-- 自动保存间隔: 60秒（引擎循环中）
-- 启动时自动检测并恢复
-"""
+"""Save and restore trading state to/from JSON."""
 import json
 import logging
 from pathlib import Path
@@ -27,7 +8,7 @@ from collections import defaultdict, deque
 
 logger = logging.getLogger(__name__)
 
-# 默认状态文件路径
+# 默認狀態文件路徑
 DEFAULT_STATE_PATH = Path('data/trading_state.json')
 
 
@@ -35,7 +16,7 @@ def serialize_portfolio(portfolio) -> Dict[str, Any]:
     """
     序列化 PortfolioManager
     
-    保存所有关键状态：持仓、交易历史、现金、盈亏等
+    保存所有關鍵狀態：持倉、交易歷史、現金、盈虧等
     """
     positions = {}
     for ticker, pos in portfolio.positions.items():
@@ -94,9 +75,9 @@ def serialize_portfolio(portfolio) -> Dict[str, Any]:
 
 def deserialize_portfolio(portfolio, data: Dict[str, Any]) -> None:
     """
-    从序列化数据恢复 PortfolioManager
+    從序列化數據恢復 PortfolioManager
     
-    直接修改传入的 portfolio 对象，恢复其状态。
+    直接修改傳入的 portfolio 對象，恢復其狀態。
     """
     from live_trading.portfolio import HoldingPosition, TradeRecord
     
@@ -116,20 +97,20 @@ def deserialize_portfolio(portfolio, data: Dict[str, Any]) -> None:
         portfolio._last_interest_calc = dt.fromisoformat(lic)
     portfolio._peak_equity = data.get('_peak_equity', data['initial_capital'])
     
-    # 恢复权益历史
+    # 恢復權益歷史
     portfolio._equity_history = [
         (str(item[0]), float(item[1]))
         for item in data.get('_equity_history', [])
     ]
     
-    # 恢复当日状态
+    # 恢復當日狀態
     ds = data.get('_day_start_date')
     if ds and ds != 'None':
         from datetime import date
         portfolio._day_start_date = date.fromisoformat(ds)
     portfolio._day_start_equity = data.get('_day_start_equity', data['initial_capital'])
     
-    # 恢复持仓
+    # 恢復持倉
     portfolio.positions.clear()
     for ticker, pdict in data.get('positions', {}).items():
         portfolio.positions[ticker] = HoldingPosition(
@@ -147,7 +128,7 @@ def deserialize_portfolio(portfolio, data: Dict[str, Any]) -> None:
             last_update=pdict.get('last_update', ''),
         )
     
-    # 恢复交易历史
+    # 恢復交易歷史
     portfolio.trade_history.clear()
     for td in data.get('trade_history', []):
         portfolio.trade_history.append(TradeRecord(
@@ -183,7 +164,7 @@ def serialize_accuracy(accuracy) -> Dict[str, Any]:
             'confirmed_at': pred.confirmed_at,
         }
     
-    # 将 defaultdict 转为普通 dict，value 的 dict 也保持原样
+    # 將 defaultdict 轉為普通 dict，value 的 dict 也保持原樣
     ticker_stats = {}
     for ticker, stats in accuracy.ticker_stats.items():
         ticker_stats[ticker] = dict(stats)
@@ -199,14 +180,14 @@ def serialize_accuracy(accuracy) -> Dict[str, Any]:
 
 
 def deserialize_accuracy(accuracy, data: Dict[str, Any]) -> None:
-    """从序列化数据恢复 AccuracyTracker"""
+    """從序列化數據恢復 AccuracyTracker"""
     from live_trading.accuracy_tracker import PredictionRecord
     
     accuracy.rolling_window = data.get('rolling_window', 50)
     accuracy._id_counter = data.get('_id_counter', 0)
     accuracy.degradation_threshold = data.get('degradation_threshold', 0.05)
     
-    # 恢复预测记录
+    # 恢復預測記錄
     accuracy.predictions.clear()
     for pid_str, pdict in data.get('predictions', {}).items():
         accuracy.predictions[int(pid_str)] = PredictionRecord(
@@ -224,13 +205,13 @@ def deserialize_accuracy(accuracy, data: Dict[str, Any]) -> None:
             confirmed_at=pdict.get('confirmed_at'),
         )
     
-    # 恢复准确率历史
+    # 恢復準確率歷史
     accuracy.accuracy_history = deque(
         data.get('accuracy_history', []),
         maxlen=200
     )
     
-    # 恢复分股票统计
+    # 恢復分股票統計
     accuracy.ticker_stats = defaultdict(lambda: {'correct': 0, 'total': 0})
     for ticker, stats in data.get('ticker_stats', {}).items():
         accuracy.ticker_stats[ticker] = dict(stats)
@@ -238,7 +219,7 @@ def deserialize_accuracy(accuracy, data: Dict[str, Any]) -> None:
 
 def serialize_benchmark(benchmark) -> Dict[str, Any]:
     """序列化 BenchmarkTracker"""
-    # 将 pandas Series 转为 list of (timestamp, value)
+    # 將 pandas Series 轉為 list of (timestamp, value)
     nasdaq_curve = []
     if not benchmark.nasdaq_equity_curve.empty:
         for ts, val in benchmark.nasdaq_equity_curve.items():
@@ -273,7 +254,7 @@ def serialize_benchmark(benchmark) -> Dict[str, Any]:
 
 
 def deserialize_benchmark(benchmark, data: Dict[str, Any]) -> None:
-    """从序列化数据恢复 BenchmarkTracker"""
+    """從序列化數據恢復 BenchmarkTracker"""
     import pandas as pd
     
     benchmark.initial_capital = data.get('initial_capital', 100000)
@@ -291,7 +272,7 @@ def deserialize_benchmark(benchmark, data: Dict[str, Any]) -> None:
         from datetime import date
         benchmark.start_date = date.fromisoformat(sd)
     
-    # 恢复权益曲线
+    # 恢復權益曲線
     nasdaq_curve = data.get('nasdaq_equity_curve', [])
     if nasdaq_curve:
         benchmark.nasdaq_equity_curve = pd.Series(
@@ -304,7 +285,7 @@ def deserialize_benchmark(benchmark, data: Dict[str, Any]) -> None:
             {pd.Timestamp(ts): float(v) for ts, v in strategy_curve}
         )
     
-    # 恢复 dict 备份（避免后续 update 覆盖历史数据）
+    # 恢復 dict 備份（避免後續 update 覆蓋歷史數據）
     if nasdaq_curve:
         benchmark._nasdaq_equity_dict = {
             pd.Timestamp(ts): float(v) for ts, v in nasdaq_curve
@@ -319,7 +300,7 @@ def deserialize_benchmark(benchmark, data: Dict[str, Any]) -> None:
     else:
         benchmark._strategy_equity_dict = {}
     
-    # 恢复日收益率序列
+    # 恢復日收益率序列
     nasdaq_rets = data.get('nasdaq_returns', [])
     if nasdaq_rets:
         benchmark.nasdaq_returns = pd.Series(
@@ -335,16 +316,16 @@ def save_state(
     filepath: Path = DEFAULT_STATE_PATH
 ) -> bool:
     """
-    保存完整交易状态到 JSON 文件
+    保存完整交易狀態到 JSON 文件
     
-    参数:
-        portfolio: PortfolioManager 实例
-        accuracy: AccuracyTracker 实例
-        benchmark: BenchmarkTracker 实例
+    參數:
+        portfolio: PortfolioManager 實例
+        accuracy: AccuracyTracker 實例
+        benchmark: BenchmarkTracker 實例
         globals_dict: 包含 _current_prices, _iteration_count,
                       _positions_initialized, _market_opened,
-                      _previous_prices 等全局变量
-        filepath: 保存路径
+                      _previous_prices 等全局變量
+        filepath: 保存路徑
     
     返回:
         是否保存成功
@@ -374,7 +355,7 @@ def save_state(
             },
         }
         
-        # 原子写入：先写临时文件，再重命名
+        # 原子寫入：先寫臨時文件，再重命名
         tmp_path = filepath.with_suffix('.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(state, f, indent=2, ensure_ascii=False, default=str)
@@ -382,19 +363,19 @@ def save_state(
         
         return True
     except Exception as e:
-        logger.error(f"保存状态失败: {e}", exc_info=True)
+        logger.error(f"保存狀態失敗: {e}", exc_info=True)
         return False
 
 
 def load_state(filepath: Path = DEFAULT_STATE_PATH) -> Optional[Dict[str, Any]]:
     """
-    从 JSON 文件加载交易状态
+    從 JSON 文件加載交易狀態
     
-    参数:
-        filepath: 状态文件路径
+    參數:
+        filepath: 狀態文件路徑
     
     返回:
-        状态字典，文件不存在或损坏则返回 None
+        狀態字典，文件不存在或損壞則返回 None
         {
             'portfolio': dict,
             'accuracy': dict,
@@ -403,7 +384,7 @@ def load_state(filepath: Path = DEFAULT_STATE_PATH) -> Optional[Dict[str, Any]]:
         }
     """
     if not filepath.exists():
-        logger.info("未找到状态文件，将使用全新状态")
+        logger.info("未找到狀態文件，將使用全新狀態")
         return None
     
     try:
@@ -412,7 +393,7 @@ def load_state(filepath: Path = DEFAULT_STATE_PATH) -> Optional[Dict[str, Any]]:
         
         version = state.get('version', 1)
         saved_at = state.get('saved_at', '未知')
-        logger.info(f"找到状态文件 (v{version}, 保存于 {saved_at})")
+        logger.info(f"找到狀態文件 (v{version}, 保存於 {saved_at})")
         
         return {
             'portfolio': state.get('portfolio', {}),
@@ -423,12 +404,12 @@ def load_state(filepath: Path = DEFAULT_STATE_PATH) -> Optional[Dict[str, Any]]:
             'saved_at': saved_at,
         }
     except (json.JSONDecodeError, KeyError) as e:
-        logger.warning(f"状态文件损坏: {e}，将使用全新状态")
-        # 备份损坏文件
+        logger.warning(f"狀態文件損壞: {e}，將使用全新狀態")
+        # 備份損壞文件
         corrupt_path = filepath.with_suffix('.corrupt')
         filepath.rename(corrupt_path)
-        logger.info(f"损坏文件已备份到 {corrupt_path}")
+        logger.info(f"損壞文件已備份到 {corrupt_path}")
         return None
     except Exception as e:
-        logger.error(f"加载状态失败: {e}")
+        logger.error(f"加載狀態失敗: {e}")
         return None

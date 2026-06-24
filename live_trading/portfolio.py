@@ -1,15 +1,4 @@
-"""
-在线模拟交易系统 - 持仓与盈亏管理模块
-
-实时跟踪：
-- 每只持仓股票的当前价格、成本价格、持仓数量
-- 每只持仓的浮动盈亏（金额 + 百分比）
-- 总盈亏（已实现 + 未实现）
-- 总净资产、现金余额、总市值
-- 交易历史记录
-
-数据刷新频率：每分钟（根据行情数据更新）
-"""
+"""Portfolio management: positions, P&L, and risk-weighted allocation."""
 
 import logging
 from typing import Optional, List, Dict, Tuple, Any
@@ -26,25 +15,25 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 数据结构
+# 數據結構
 # ============================================================================
 @dataclass
 class HoldingPosition:
     """
-    单只持仓详情
+    單只持倉詳情
     
-    属性:
-        ticker: 股票代码
-        quantity: 持有股数（正=做多，负=做空）
-        avg_cost: 平均成本价格
-        current_price: 当前市场价格
-        market_value: 当前市值
-        cost_basis: 总成本
-        unrealized_pnl: 未实现盈亏（金额）
-        unrealized_pnl_pct: 未实现盈亏百分比
-        day_change: 当日涨跌（金额）
-        day_change_pct: 当日涨跌幅
-        weight: 占总资产比例
+    屬性:
+        ticker: 股票代碼
+        quantity: 持有股數（正=做多，負=做空）
+        avg_cost: 平均成本價格
+        current_price: 當前市場價格
+        market_value: 當前市值
+        cost_basis: 總成本
+        unrealized_pnl: 未實現盈虧（金額）
+        unrealized_pnl_pct: 未實現盈虧百分比
+        day_change: 當日漲跌（金額）
+        day_change_pct: 當日漲跌幅
+        weight: 佔總資產比例
     """
     ticker: str
     quantity: int = 0
@@ -63,70 +52,70 @@ class HoldingPosition:
 @dataclass
 class PortfolioSnapshot:
     """
-    账户完整快照
+    帳戶完整快照
     
-    记录某一时刻的完整账户状态，用于展示和历史对比。
+    記錄某一時刻的完整帳戶狀態，用於展示和歷史對比。
     """
     timestamp: str = ''
     
-    # 资金
+    # 資金
     initial_capital: float = 100_000.0
     cash: float = 100_000.0
     total_market_value: float = 0.0
-    total_equity: float = 100_000.0  # 净资产 = 现金 + 持仓市值
+    total_equity: float = 100_000.0  # 淨資產 = 現金 + 持倉市值
     
-    # 盈亏
-    realized_pnl: float = 0.0       # 已实现盈亏
-    unrealized_pnl: float = 0.0     # 未实现盈亏
-    total_pnl: float = 0.0          # 总盈亏
-    total_pnl_pct: float = 0.0      # 总盈亏百分比
+    # 盈虧
+    realized_pnl: float = 0.0       # 已實現盈虧
+    unrealized_pnl: float = 0.0     # 未實現盈虧
+    total_pnl: float = 0.0          # 總盈虧
+    total_pnl_pct: float = 0.0      # 總盈虧百分比
     
-    # 当日
-    day_pnl: float = 0.0            # 当日盈亏
-    day_pnl_pct: float = 0.0        # 当日盈亏百分比
+    # 當日
+    day_pnl: float = 0.0            # 當日盈虧
+    day_pnl_pct: float = 0.0        # 當日盈虧百分比
     
-    # 持仓
+    # 持倉
     positions: Dict[str, HoldingPosition] = field(default_factory=dict)
     position_count: int = 0
     
-    # 风控
+    # 風控
     leverage: float = 0.0
     max_drawdown_pct: float = 0.0
     
-    # 市场状态
+    # 市場狀態
     market_status: str = ''
 
 
 @dataclass
 class TradeRecord:
-    """单笔交易记录"""
+    """單筆交易記錄"""
     trade_id: str
     ticker: str
     side: str             # BUY/SELL
     quantity: int
     price: float
-    total_value: float    # 成交金额
+    total_value: float    # 成交金額
     commission: float
     timestamp: str
-    pnl: float = 0.0      # 该交易的盈亏（仅平仓时有值）
+    pnl: float = 0.0      # 該交易的盈虧（僅平倉時有值）
     reason: str = ''
 
 
 # ============================================================================
-# 持仓管理器
+# 持倉管理器
 # ============================================================================
 class PortfolioManager:
     """
-    持仓与账户管理器
+    持倉與帳戶管理器
     
-    职责：
-    - 记录每笔交易
-    - 维护持仓状态
-    - 按最新行情更新持仓市值
-    - 生成完整的账户快照
-    - 计算各类盈亏指标
+    職責：
+    - 記錄每筆交易
+    - 維護持倉狀態
+    - 按最新行情更新持倉市值
+    - 生成完整的帳戶快照
+    - 計算各類盈虧指標
     
-    初始资金：$100,000
+    初始資金：$100,000
     
     使用示例:
         pm = PortfolioManager(initial_capital=100000.0)
@@ -137,33 +126,33 @@ class PortfolioManager:
     
     def __init__(self, initial_capital: float = 100_000.0):
         """
-        参数:
-            initial_capital: 初始资金（默认10万美元）
+        參數:
+            initial_capital: 初始資金（默認10萬美元）
         """
         self.initial_capital = initial_capital
         self.cash = initial_capital
         
-        # 持仓 {ticker: HoldingPosition}
+        # 持倉 {ticker: HoldingPosition}
         self.positions: Dict[str, HoldingPosition] = {}
         
-        # 已实现盈亏
+        # 已實現盈虧
         self.realized_pnl: float = 0.0
         
-        # 交易历史
+        # 交易歷史
         self.trade_history: List[TradeRecord] = []
         self._trade_id_counter: int = 0
         
-        # 每日快照历史（用于回撤计算）
+        # 每日快照歷史（用於回撤計算）
         self._equity_history: List[Tuple[str, float]] = []  # [(date_str, equity)]
         
-        # 当日初始资产（用于计算当日盈亏）
+        # 當日初始資產（用於計算當日盈虧）
         self._day_start_equity: float = initial_capital
         self._day_start_date: Optional[date] = None
         
-        # 峰值资产（用于回撤计算）
+        # 峰值資產（用於回撤計算）
         self._peak_equity: float = initial_capital
         
-        # 总佣金
+        # 總佣金
         self.total_commission: float = 0.0
         
         # Leverage/Margin Tracking
@@ -224,17 +213,17 @@ class PortfolioManager:
     def execute_buy(self, ticker: str, quantity: int, price: float,
                     commission: float = 0.0, reason: str = '') -> Optional[TradeRecord]:
         """
-        执行买入操作
+        執行買入操作
         
-        参数:
-            ticker: 股票代码
-            quantity: 买入数量
-            price: 成交价格
+        參數:
+            ticker: 股票代碼
+            quantity: 買入數量
+            price: 成交價格
             commission: 佣金
             reason: 交易原因
         
         返回:
-            TradeRecord或None（资金不足时）
+            TradeRecord或None（資金不足時）
         """
         ticker = ticker.upper()
         total_cost = quantity * price + commission
@@ -251,11 +240,11 @@ class PortfolioManager:
             else:
                 return None
         
-        # 更新现金
+        # 更新現金
         self.cash -= total_cost
         self.total_commission += commission
         
-        # 更新持仓
+        # 更新持倉
         if ticker not in self.positions:
             self.positions[ticker] = HoldingPosition(
                 ticker=ticker,
@@ -268,14 +257,14 @@ class PortfolioManager:
             )
         else:
             pos = self.positions[ticker]
-            # 计算新的平均成本
+            # 計算新的平均成本
             total_qty = pos.quantity + quantity
             new_total_cost = (pos.quantity * pos.avg_cost) + (quantity * price) + commission
             pos.avg_cost = new_total_cost / total_qty
             pos.quantity = total_qty
             pos.cost_basis += total_cost
         
-        # 记录交易
+        # 記錄交易
         self._trade_id_counter += 1
         trade = TradeRecord(
             trade_id=f"T{self._trade_id_counter:06d}",
@@ -290,12 +279,12 @@ class PortfolioManager:
         )
         self.trade_history.append(trade)
         
-        # 更新持仓市值
+        # 更新持倉市值
         self._update_position(ticker, price)
         
         logger.info(
-            f"买入: {ticker} {quantity}股 @ ${price:.2f}, 佣金${commission:.2f}, "
-            f"余额${self.cash:,.2f}"
+            f"買入: {ticker} {quantity}股 @ ${price:.2f}, 佣金${commission:.2f}, "
+            f"餘額${self.cash:,.2f}"
         )
         
         return trade
@@ -303,32 +292,32 @@ class PortfolioManager:
     def execute_sell(self, ticker: str, quantity: int, price: float,
                      commission: float = 0.0, reason: str = '') -> Optional[TradeRecord]:
         """
-        执行卖出操作
+        執行賣出操作
         
-        参数:
-            ticker: 股票代码
-            quantity: 卖出数量
-            price: 成交价格
+        參數:
+            ticker: 股票代碼
+            quantity: 賣出數量
+            price: 成交價格
             commission: 佣金
             reason: 交易原因
         
         返回:
-            TradeRecord或None（持仓不足时）
+            TradeRecord或None（持倉不足時）
         """
         ticker = ticker.upper()
         
-        # 持仓检查
+        # 持倉檢查
         pos = self.positions.get(ticker)
         if not pos or pos.quantity < quantity:
-            logger.warning(f"持仓不足: {ticker}, 持有{pos.quantity if pos else 0}股")
+            logger.warning(f"持倉不足: {ticker}, 持有{pos.quantity if pos else 0}股")
             return None
         
-        # 计算盈亏
-        # 使用FIFO方法（简化）：按平均成本计算
+        # 計算盈虧
+        # 使用FIFO方法（簡化）：按平均成本計算
         cost_per_share = pos.avg_cost
         trade_pnl = (price - cost_per_share) * quantity
         
-        # 更新现金和盈亏
+        # 更新現金和盈虧
         proceeds = quantity * price - commission
         self.cash += proceeds
         self.realized_pnl += trade_pnl - commission
@@ -338,16 +327,16 @@ class PortfolioManager:
             repay_amount = min(self.cash * 0.3, self.borrowed)
             self.repay(repay_amount)
         
-        # 更新持仓
+        # 更新持倉
         pos.quantity -= quantity
         if pos.quantity == 0:
             pos.avg_cost = 0.0
             pos.cost_basis = 0.0
         else:
-            # 按比例减少成本基础
+            # 按比例減少成本基礎
             pos.cost_basis = pos.cost_basis * (pos.quantity / (pos.quantity + quantity))
         
-        # 记录交易
+        # 記錄交易
         self._trade_id_counter += 1
         trade = TradeRecord(
             trade_id=f"T{self._trade_id_counter:06d}",
@@ -364,30 +353,30 @@ class PortfolioManager:
         self.trade_history.append(trade)
         
         logger.info(
-            f"卖出: {ticker} {quantity}股 @ ${price:.2f}, "
-            f"盈亏${trade_pnl:+.2f}, 余额${self.cash:,.2f}"
+            f"賣出: {ticker} {quantity}股 @ ${price:.2f}, "
+            f"盈虧${trade_pnl:+.2f}, 餘額${self.cash:,.2f}"
         )
         
         return trade
     
     def update_prices(self, prices: Dict[str, float]) -> None:
         """
-        按最新行情更新所有持仓市值
+        按最新行情更新所有持倉市值
         
-        每分钟调用一次，确保持仓数据显示最新价格。
+        每分鐘調用一次，確保持倉數據顯示最新價格。
         
-        参数:
+        參數:
             prices: {ticker: current_price}
         """
         for ticker, price in prices.items():
             self._update_position(ticker.upper(), price)
         
-        # 清理零持仓
+        # 清理零持倉
         self.positions = {
             t: p for t, p in self.positions.items() if p.quantity != 0
         }
         
-        # 每日快照记录
+        # 每日快照記錄
         today = date.today().isoformat()
         current_equity = self.get_total_equity()
         
@@ -404,7 +393,7 @@ class PortfolioManager:
             self._peak_equity = current_equity
     
     def _update_position(self, ticker: str, price: float) -> None:
-        """更新单只持仓的市值"""
+        """更新單只持倉的市值"""
         if ticker not in self.positions:
             return
         
@@ -424,7 +413,7 @@ class PortfolioManager:
         pos.last_update = datetime.now().strftime('%H:%M:%S')
     
     def get_total_market_value(self) -> float:
-        """获取持仓总市值"""
+        """獲取持倉總市值"""
         return sum(p.market_value for p in self.positions.values())
     
     def get_total_equity(self) -> float:
@@ -432,14 +421,14 @@ class PortfolioManager:
         return self.cash + self.get_total_market_value() - self.borrowed
     
     def get_total_pnl(self) -> float:
-        """获取总盈亏（已实现 + 未实现）"""
+        """獲取總盈虧（已實現 + 未實現）"""
         unrealized = sum(p.unrealized_pnl for p in self.positions.values())
         return self.realized_pnl + unrealized
     
     def get_total_pnl_pct(self) -> float:
-        """获取总盈亏百分比"""
+        """獲取總盈虧百分比"""
         total_pnl = self.get_total_pnl()
-        # 基于历史投入成本计算
+        # 基於歷史投入成本計算
         total_invested = self.initial_capital
         if self.trade_history:
             total_cost = sum(
@@ -451,24 +440,24 @@ class PortfolioManager:
         return safe_divide(total_pnl, total_invested, 0.0)
     
     def get_day_pnl(self) -> float:
-        """获取当日盈亏"""
+        """獲取當日盈虧"""
         return self.get_total_equity() - self._day_start_equity
     
     def get_day_pnl_pct(self) -> float:
-        """获取当日盈亏百分比"""
+        """獲取當日盈虧百分比"""
         if self._day_start_equity <= 0:
             return 0.0
         return self.get_day_pnl() / self._day_start_equity
     
     def get_max_drawdown_pct(self) -> float:
-        """获取最大回撤百分比"""
+        """獲取最大回撤百分比"""
         current = self.get_total_equity()
         if self._peak_equity <= 0:
             return 0.0
         return (current - self._peak_equity) / self._peak_equity
     
     def get_leverage(self) -> float:
-        """获取当前杠杆倍数"""
+        """獲取當前槓桿倍數"""
         equity = self.get_total_equity()
         if equity <= 0:
             return 0.0
@@ -476,15 +465,15 @@ class PortfolioManager:
     
     def get_snapshot(self, market_status: str = '') -> PortfolioSnapshot:
         """
-        获取完整的账户快照
+        獲取完整的帳戶快照
         
-        包含所有持仓详情、盈亏数据、风控指标。
+        包含所有持倉詳情、盈虧數據、風控指標。
         
-        参数:
-            market_status: 市场状态字符串
+        參數:
+            market_status: 市場狀態字符串
         
         返回:
-            PortfolioSnapshot对象
+            PortfolioSnapshot對象
         """
         total_market_value = self.get_total_market_value()
         total_equity = self.get_total_equity()
@@ -510,7 +499,7 @@ class PortfolioManager:
             market_status=market_status,
         )
         
-        # 计算权重
+        # 計算權重
         for pos in snapshot.positions.values():
             if total_equity > 0:
                 pos.weight = pos.market_value / total_equity
@@ -519,19 +508,19 @@ class PortfolioManager:
     
     def get_positions_summary(self) -> pd.DataFrame:
         """
-        获取持仓摘要DataFrame
+        獲取持倉摘要DataFrame
         
         返回列：
-        - Ticker: 股票代码
-        - Quantity: 持仓数量
-        - Avg_Cost: 平均成本价
-        - Current_Price: 当前价格
-        - Market_Value: 当前市值
-        - Cost_Basis: 总成本
-        - Unrealized_PnL: 未实现盈亏
-        - PnL_Pct: 盈亏百分比
-        - Weight: 权重
-        - Day_Change: 当日涨跌
+        - Ticker: 股票代碼
+        - Quantity: 持倉數量
+        - Avg_Cost: 平均成本價
+        - Current_Price: 當前價格
+        - Market_Value: 當前市值
+        - Cost_Basis: 總成本
+        - Unrealized_PnL: 未實現盈虧
+        - PnL_Pct: 盈虧百分比
+        - Weight: 權重
+        - Day_Change: 當日漲跌
         """
         if not self.positions:
             return pd.DataFrame(
@@ -558,7 +547,7 @@ class PortfolioManager:
         return pd.DataFrame(records)
     
     def get_trade_summary(self, last_n: int = 20) -> pd.DataFrame:
-        """获取最近N笔交易摘要"""
+        """獲取最近N筆交易摘要"""
         trades = self.trade_history[-last_n:]
         
         if not trades:

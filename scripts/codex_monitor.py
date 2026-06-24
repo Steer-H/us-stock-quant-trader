@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-Codex 自动化监控脚本
+Codex 自動化監控腳本
 
-专为 Codex 自动化设计的美股量化交易系统监控。
-在美股交易时段自动检测系统健康状态，发现异常生成结构化的状态报告。
+專為 Codex 自動化設計的美股量化交易系統監控。
+在美股交易時段自動檢測系統健康狀態，發現異常生成結構化的狀態報告。
 
-监控维度：
-  1. Web 服务器进程存活
-  2. 健康检查 API 响应
-  3. 持仓数据异常（权益/回撤/集中度）
-  4. 错误日志增量扫描
-  5. 系统资源（CPU/内存）
-  6. 市场时钟状态
+監控維度：
+  1. Web 伺服器進程存活
+  2. 健康檢查 API 響應
+  3. 持倉數據異常（權益/回撤/集中度）
+  4. 錯誤日誌增量掃描
+  5. 系統資源（CPU/內存）
+  6. 市場時鐘狀態
 
-输出格式：
-  JSON 结构化状态报告，方便 Codex 解析和展示。
+輸出格式：
+  JSON 結構化狀態報告，方便 Codex 解析和展示。
 
 用法：
-  python scripts/codex_monitor.py              # 标准检查
-  python scripts/codex_monitor.py --notify     # 检查并发送桌面通知
-  python scripts/codex_monitor.py --json-only  # 仅输出 JSON
+  python scripts/codex_monitor.py              # 標準檢查
+  python scripts/codex_monitor.py --notify     # 檢查並發送桌面通知
+  python scripts/codex_monitor.py --json-only  # 僅輸出 JSON
 """
 
 import sys
@@ -38,7 +38,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 LOG_DIR = PROJECT_ROOT / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
 
-# 精简日志
+# 精簡日誌
 logging.basicConfig(
     level=logging.WARNING,
     format='%(asctime)s [CodexMonitor] %(levelname)s: %(message)s',
@@ -64,10 +64,10 @@ CONFIG = {
 }
 
 # ============================================================================
-# 市场时钟检查
+# 市場時鐘檢查
 # ============================================================================
 def is_market_active() -> Tuple[bool, str]:
-    """判断当前是否处于美股交易相关时段"""
+    """判斷當前是否處於美股交易相關時段"""
     try:
         from live_trading.market_clock import MarketClock, MarketStatus
         clock = MarketClock()
@@ -79,14 +79,14 @@ def is_market_active() -> Tuple[bool, str]:
         }
         return active, desc
     except Exception as e:
-        logger.warning(f"市场时钟获取失败: {e}，默认按活跃处理")
-        return True, "未知(默认活跃)"
+        logger.warning(f"市場時鐘獲取失敗: {e}，默認按活躍處理")
+        return True, "未知(默認活躍)"
 
 # ============================================================================
-# 各检查项
+# 各檢查項
 # ============================================================================
 def check_server_process() -> Dict[str, Any]:
-    """检查 Web 服务器进程"""
+    """檢查 Web 伺服器進程"""
     result = {'alive': False, 'pid': None, 'error': None}
     try:
         r = subprocess.run(
@@ -107,13 +107,13 @@ def check_server_process() -> Dict[str, Any]:
             except Exception:
                 continue
         if pids:
-            result['error'] = f'端口被非服务器进程占用: {pids}'
+            result['error'] = f'埠被非伺服器進程佔用: {pids}'
     except Exception as e:
         result['error'] = str(e)
     return result
 
 def check_health_api() -> Dict[str, Any]:
-    """检查健康检查 API"""
+    """檢查健康檢查 API"""
     import urllib.request
     import urllib.error
     result = {'ok': False, 'data': None, 'error': None, 'latency_ms': 0}
@@ -133,7 +133,7 @@ def check_health_api() -> Dict[str, Any]:
     return result
 
 def check_positions() -> List[Dict[str, Any]]:
-    """检查持仓异常"""
+    """檢查持倉異常"""
     import urllib.request
     anomalies = []
     try:
@@ -156,7 +156,7 @@ def check_positions() -> List[Dict[str, Any]]:
     if total_equity <= 0:
         anomalies.append({
             'type': 'zero_equity', 'severity': 'CRITICAL',
-            'message': f'总权益为0或负数: ${total_equity:,.2f}'
+            'message': f'總權益為0或負數: ${total_equity:,.2f}'
         })
 
     if initial_capital > 0:
@@ -164,12 +164,12 @@ def check_positions() -> List[Dict[str, Any]]:
         if net_pnl_pct < CONFIG['drawdown_critical_pct']:
             anomalies.append({
                 'type': 'large_drawdown', 'severity': 'CRITICAL',
-                'message': f'整体亏损超{abs(CONFIG["drawdown_critical_pct"])}%: {net_pnl_pct:.1f}%'
+                'message': f'整體虧損超{abs(CONFIG["drawdown_critical_pct"])}%: {net_pnl_pct:.1f}%'
             })
         elif net_pnl_pct < CONFIG['drawdown_warning_pct']:
             anomalies.append({
                 'type': 'drawdown_warning', 'severity': 'WARNING',
-                'message': f'整体亏损超{abs(CONFIG["drawdown_warning_pct"])}%: {net_pnl_pct:.1f}%'
+                'message': f'整體虧損超{abs(CONFIG["drawdown_warning_pct"])}%: {net_pnl_pct:.1f}%'
             })
 
     positions = data.get('positions', [])
@@ -180,7 +180,7 @@ def check_positions() -> List[Dict[str, Any]]:
         if abs(unrealized) > CONFIG['position_pnl_critical_pct']:
             anomalies.append({
                 'type': 'position_extreme_pnl', 'severity': 'WARNING',
-                'message': f'{ticker} 未实现盈亏 {unrealized:.1f}%'
+                'message': f'{ticker} 未實現盈虧 {unrealized:.1f}%'
             })
         if weight > CONFIG['position_concentration_pct']:
             anomalies.append({
@@ -191,13 +191,13 @@ def check_positions() -> List[Dict[str, Any]]:
     if len(positions) > 50:
         anomalies.append({
             'type': 'too_many_positions', 'severity': 'WARNING',
-            'message': f'持仓数量过多: {len(positions)}'
+            'message': f'持倉數量過多: {len(positions)}'
         })
 
     return anomalies
 
 def scan_recent_errors() -> List[Dict[str, Any]]:
-    """扫描最近的错误日志（最近100行）"""
+    """掃描最近的錯誤日誌（最近100行）"""
     errors = []
     log_files = [
         LOG_DIR / 'watchdog.log',
@@ -226,7 +226,7 @@ def scan_recent_errors() -> List[Dict[str, Any]]:
     return errors
 
 def check_system_resources() -> List[Dict[str, Any]]:
-    """检查系统资源"""
+    """檢查系統資源"""
     alerts = []
     try:
         import psutil
@@ -235,7 +235,7 @@ def check_system_resources() -> List[Dict[str, Any]]:
         if mem_mb > CONFIG['memory_warning_mb']:
             alerts.append({
                 'type': 'high_memory', 'severity': 'WARNING',
-                'message': f'内存使用 {mem_mb:.0f}MB'
+                'message': f'內存使用 {mem_mb:.0f}MB'
             })
         if cpu_pct > CONFIG['cpu_warning_pct']:
             alerts.append({
@@ -245,14 +245,14 @@ def check_system_resources() -> List[Dict[str, Any]]:
     except ImportError:
         pass
     except Exception as e:
-        logger.warning(f"资源检查失败: {e}")
+        logger.warning(f"資源檢查失敗: {e}")
     return alerts
 
 # ============================================================================
-# 自动修复
+# 自動修復
 # ============================================================================
 def attempt_restart() -> Dict[str, Any]:
-    """尝试重启服务器"""
+    """嘗試重啟伺服器"""
     result = {'action': 'restart_server', 'success': False, 'message': ''}
     try:
         subprocess.run(
@@ -279,31 +279,31 @@ def attempt_restart() -> Dict[str, Any]:
         alive = check_server_process()
         if alive['alive']:
             result['success'] = True
-            result['message'] = f"服务器已自动重启 (PID: {alive['pid']})"
+            result['message'] = f"伺服器已自動重啟 (PID: {alive['pid']})"
         else:
-            result['message'] = '重启后服务器仍未响应'
+            result['message'] = '重啟後伺服器仍未響應'
     except Exception as e:
-        result['message'] = f'重启失败: {e}'
+        result['message'] = f'重啟失敗: {e}'
     return result
 
 # ============================================================================
 # 桌面通知
 # ============================================================================
 def send_desktop_notification(title: str, message: str, sound: bool = True):
-    """发送 macOS 桌面通知"""
+    """發送 macOS 桌面通知"""
     try:
         script = f'display notification "{message}" with title "{title}"'
         if sound:
             script += ' sound name "default"'
         subprocess.run(['osascript', '-e', script], timeout=3)
     except Exception as e:
-        logger.warning(f"桌面通知发送失败: {e}")
+        logger.warning(f"桌面通知發送失敗: {e}")
 
 # ============================================================================
-# 主逻辑
+# 主邏輯
 # ============================================================================
 def run_full_check() -> Dict[str, Any]:
-    """执行完整检查，返回结构化报告"""
+    """執行完整檢查，返回結構化報告"""
     check_start = datetime.now()
     market_active, market_desc = is_market_active()
 
@@ -317,45 +317,45 @@ def run_full_check() -> Dict[str, Any]:
         'overall_status': 'HEALTHY',
     }
 
-    # 1. 进程检查
+    # 1. 進程檢查
     proc = check_server_process()
     report['checks']['server_process'] = proc
     if not proc['alive']:
         report['anomalies'].append({
             'type': 'server_down', 'severity': 'CRITICAL',
-            'message': f'Web服务器未运行' + (f': {proc["error"]}' if proc.get('error') else '')
+            'message': f'Web伺服器未運行' + (f': {proc["error"]}' if proc.get('error') else '')
         })
 
-    # 2. 健康检查 API
+    # 2. 健康檢查 API
     health = check_health_api()
     report['checks']['health_api'] = health
     if not health['ok']:
         report['anomalies'].append({
             'type': 'health_api_fail', 'severity': 'CRITICAL' if not proc['alive'] else 'WARNING',
-            'message': f'健康检查失败: {health.get("error", "状态异常")}'
+            'message': f'健康檢查失敗: {health.get("error", "狀態異常")}'
         })
 
-    # 3. 持仓异常
+    # 3. 持倉異常
     pos_anomalies = check_positions()
     report['checks']['position_anomalies'] = pos_anomalies
     report['anomalies'].extend(pos_anomalies)
 
-    # 4. 错误日志
+    # 4. 錯誤日誌
     log_errors = scan_recent_errors()
     report['checks']['log_errors'] = log_errors
     num_errors = len(log_errors)
     if num_errors > 0:
         report['anomalies'].append({
             'type': 'log_errors_found', 'severity': 'WARNING',
-            'message': f'发现 {num_errors} 条错误日志'
+            'message': f'發現 {num_errors} 條錯誤日誌'
         })
 
-    # 5. 系统资源
+    # 5. 系統資源
     resource_alerts = check_system_resources()
     report['checks']['resource_alerts'] = resource_alerts
     report['anomalies'].extend(resource_alerts)
 
-    # 自动修复
+    # 自動修復
     if not proc['alive']:
         if market_active:
             restart_result = attempt_restart()
@@ -369,14 +369,14 @@ def run_full_check() -> Dict[str, Any]:
                     ]
                     report['anomalies'].append({
                         'type': 'auto_recovered', 'severity': 'INFO',
-                        'message': '服务器已自动恢复'
+                        'message': '伺服器已自動恢復'
                     })
         else:
             report['actions'].append({
-                'action': 'skip_restart', 'message': '非交易时段，跳过自动重启'
+                'action': 'skip_restart', 'message': '非交易時段，跳過自動重啟'
             })
 
-    # 判断整体状态
+    # 判斷整體狀態
     criticals = [a for a in report['anomalies'] if a['severity'] == 'CRITICAL']
     warnings = [a for a in report['anomalies'] if a['severity'] == 'WARNING']
     if criticals:
@@ -391,36 +391,36 @@ def run_full_check() -> Dict[str, Any]:
     return report
 
 def format_text_report(report: Dict[str, Any]) -> str:
-    """将报告格式化为可读文本"""
+    """將報告格式化為可讀文本"""
     lines = []
     lines.append("=" * 55)
-    lines.append(f"  📊 量化交易系统监控报告")
+    lines.append(f"  📊 量化交易系統監控報告")
     lines.append("=" * 55)
-    lines.append(f"  时间: {report['timestamp']}")
-    lines.append(f"  市场: {report['market_status']} {'🟢' if report['market_active'] else '⚫'}")
+    lines.append(f"  時間: {report['timestamp']}")
+    lines.append(f"  市場: {report['market_status']} {'🟢' if report['market_active'] else '⚫'}")
 
     status_icon = {'HEALTHY': '✅', 'WARNING': '⚠️', 'CRITICAL': '🚨'}
-    lines.append(f"  状态: {status_icon.get(report['overall_status'], '❓')} {report['overall_status']}")
+    lines.append(f"  狀態: {status_icon.get(report['overall_status'], '❓')} {report['overall_status']}")
 
     proc = report['checks']['server_process']
-    lines.append(f"  进程: {'✅ 运行中' if proc['alive'] else '❌ 未运行'}")
+    lines.append(f"  進程: {'✅ 運行中' if proc['alive'] else '❌ 未運行'}")
 
     health = report['checks']['health_api']
-    lines.append(f"  API:  {'✅ 正常' if health['ok'] else '❌ 异常'} ({health['latency_ms']}ms)")
+    lines.append(f"  API:  {'✅ 正常' if health['ok'] else '❌ 異常'} ({health['latency_ms']}ms)")
 
     anomalies = report['anomalies']
     errors = report['checks']['log_errors']
-    lines.append(f"  异常: {len(anomalies)} | 日志错误: {len(errors)} | 耗时: {report['check_duration_ms']}ms")
+    lines.append(f"  異常: {len(anomalies)} | 日誌錯誤: {len(errors)} | 耗時: {report['check_duration_ms']}ms")
 
     if anomalies:
-        lines.append(f"\n  --- 异常详情 ---")
+        lines.append(f"\n  --- 異常詳情 ---")
         for a in anomalies:
             icon = {'CRITICAL': '🚨', 'ERROR': '❌', 'WARNING': '⚠️', 'INFO': 'ℹ️'}
             lines.append(f"  {icon.get(a['severity'], '•')} [{a['severity']}] {a['message']}")
 
     actions = report.get('actions', [])
     if actions:
-        lines.append(f"\n  --- 修复动作 ---")
+        lines.append(f"\n  --- 修復動作 ---")
         for a in actions:
             status = '✅' if a.get('success', True) else '❌'
             lines.append(f"  {status} {a.get('action', a.get('message', ''))}")
@@ -430,10 +430,10 @@ def format_text_report(report: Dict[str, Any]) -> str:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Codex 自动化交易系统监控')
-    parser.add_argument('--notify', action='store_true', help='发现异常时发送桌面通知')
-    parser.add_argument('--json-only', action='store_true', help='仅输出 JSON 报告')
-    parser.add_argument('--always-notify', action='store_true', help='无论是否有异常都发送通知')
+    parser = argparse.ArgumentParser(description='Codex 自動化交易系統監控')
+    parser.add_argument('--notify', action='store_true', help='發現異常時發送桌面通知')
+    parser.add_argument('--json-only', action='store_true', help='僅輸出 JSON 報告')
+    parser.add_argument('--always-notify', action='store_true', help='無論是否有異常都發送通知')
     args = parser.parse_args()
 
     report = run_full_check()
@@ -453,21 +453,21 @@ def main():
             criticals = [a for a in report['anomalies'] if a['severity'] == 'CRITICAL']
             if criticals:
                 send_desktop_notification(
-                    '🚨 量化交易系统异常',
-                    f'{critical[0]["message"]}（共{anomaly_count}项异常）'
+                    '🚨 量化交易系統異常',
+                    f'{critical[0]["message"]}（共{anomaly_count}項異常）'
                 )
             else:
                 send_desktop_notification(
-                    '⚠️ 量化交易系统告警',
-                    f'发现{anomaly_count}项异常'
+                    '⚠️ 量化交易系統告警',
+                    f'發現{anomaly_count}項異常'
                 )
         elif args.always_notify:
             send_desktop_notification(
-                '✅ 量化交易系统正常',
-                f'所有检查通过 ({report["check_duration_ms"]}ms)'
+                '✅ 量化交易系統正常',
+                f'所有檢查通過 ({report["check_duration_ms"]}ms)'
             )
 
-    # 退出码：有严重异常时非0
+    # 退出碼：有嚴重異常時非0
     if report['overall_status'] == 'CRITICAL':
         sys.exit(2)
     elif report['overall_status'] == 'WARNING':

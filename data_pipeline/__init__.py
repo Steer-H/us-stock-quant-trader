@@ -1,5 +1,5 @@
 # data_pipeline/__init__.py
-# 美股量化交易系统 - 数据管道模块入口
+# 美股量化交易系統 - 數據管道模塊入口
 from data_pipeline.fetcher import DataFetcher, YahooFetcher, PolygonFetcher
 from data_pipeline.cleaner import DataCleaner
 from data_pipeline.indicators import TechnicalIndicators

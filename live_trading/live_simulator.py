@@ -1,32 +1,4 @@
-"""
-在线模拟交易系统 - 实时模拟交易核心引擎
-
-核心功能：
-- 同步真实时间，每分钟刷新行情数据
-- 根据ML模型预测生成交易信号
-- 自动执行模拟交易（市价单）
-- 非交易时段显示倒计时
-- 持续追踪持仓和盈亏
-- 记录所有交易信号和执行的审计日志
-
-架构：
-┌──────────────────────────────────┐
-│         LiveSimulator             │
-│  ┌────────────┐  ┌─────────────┐ │
-│  │ MarketClock│  │PortfolioMgr │ │
-│  └────────────┘  └─────────────┘ │
-│  ┌────────────┐  ┌─────────────┐ │
-│  │BenchmarkTrk│  │AccuracyTrkr │ │
-│  └────────────┘  └─────────────┘ │
-│  ┌────────────┐  ┌─────────────┐ │
-│  │  Dashboard │  │ AlertMgr    │ │
-│  └────────────┘  └─────────────┘ │
-└──────────────────────────────────┘
-
-使用示例:
-    sim = LiveSimulator(tickers=['AAPL','GOOGL','MSFT'])
-    sim.run()
-"""
+"""Live trading simulator with configurable parameters."""
 
 import logging
 import time
@@ -47,53 +19,53 @@ from live_trading.accuracy_tracker import AccuracyTracker, AccuracySnapshot
 
 logger = logging.getLogger(__name__)
 
-# 默认追踪的股票
+# 默認追蹤的股票
 DEFAULT_TICKERS = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'NVDA', 'META', 'TSLA', 'NFLX']
 
 
 class LiveSimulator:
     """
-    在线模拟交易核心引擎
+    在線模擬交易核心引擎
     
-    以分钟频率运行，与真实市场同步：
-    1. 每60秒检查市场状态
-    2. 交易时段拉取实时行情
-    3. 调用ML模型生成预测信号
-    4. 执行模拟交易
-    5. 更新持仓和账户
-    6. 刷新仪表盘展示
+    以分鐘頻率運行，與真實市場同步：
+    1. 每60秒檢查市場狀態
+    2. 交易時段拉取實時行情
+    3. 調用ML模型生成預測信號
+    4. 執行模擬交易
+    5. 更新持倉和帳戶
+    6. 刷新儀錶盤展示
     
-    非交易时段：
-    - 显示距离开市的倒计时
-    - 不执行任何交易
-    - 可查看历史记录
+    非交易時段：
+    - 顯示距離開市的倒計時
+    - 不執行任何交易
+    - 可查看歷史記錄
     """
     
     def __init__(
         self,
         tickers: Optional[List[str]] = None,
         initial_capital: float = 100_000.0,
-        model: Optional[object] = None,   # 训练好的模型
-        scaler: Optional[object] = None,  # 特征标准化器
+        model: Optional[object] = None,   # 訓練好的模型
+        scaler: Optional[object] = None,  # 特徵標準化器
         trading_config: Optional[TradingConfig] = None,
         model_config: Optional[ModelConfig] = None,
-        refresh_interval: int = 60  # 刷新间隔（秒）
+        refresh_interval: int = 60  # 刷新間隔（秒）
     ):
         """
-        参数:
-            tickers: 追踪的股票代码列表
-            initial_capital: 初始资金（默认10万美元）
-            model: 已训练的Transformer模型
-            scaler: 特征标准化器
+        參數:
+            tickers: 追蹤的股票代碼列表
+            initial_capital: 初始資金（默認10萬美元）
+            model: 已訓練的Transformer模型
+            scaler: 特徵標準化器
             trading_config: 交易配置
             model_config: 模型配置
-            refresh_interval: 数据刷新间隔（秒）
+            refresh_interval: 數據刷新間隔（秒）
         """
         self.tickers = [t.upper() for t in (tickers or DEFAULT_TICKERS)]
         self.initial_capital = initial_capital
         self.refresh_interval = refresh_interval
         
-        # 子模块
+        # 子模塊
         self.clock = MarketClock()
         self.portfolio = PortfolioManager(initial_capital)
         self.benchmark = BenchmarkTracker(initial_capital)
@@ -105,7 +77,7 @@ class LiveSimulator:
         self.model_config = model_config or ModelConfig()
         self.trading_config = trading_config or TradingConfig()
         
-        # 运行时状态
+        # 運行時狀態
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._current_prices: Dict[str, float] = {}
@@ -113,29 +85,29 @@ class LiveSimulator:
         self._iteration_count: int = 0
         self._last_refresh_time: float = 0.0
         
-        # 回调函数
+        # 回調函數
         self.on_refresh_callbacks: List[Callable] = []
         
-        # 每日交易计数器
+        # 每日交易計數器
         self._daily_trades: int = 0
         self._daily_trade_date: Optional[object] = None
         
         logger.info(
             f"LiveSimulator初始化: {len(self.tickers)}只股票, "
-            f"初始资金${initial_capital:,.0f}, 刷新间隔{refresh_interval}s"
+            f"初始資金${initial_capital:,.0f}, 刷新間隔{refresh_interval}s"
         )
     
     def add_refresh_callback(self, callback: Callable) -> None:
         """
-        添加刷新回调（用于自定义仪表盘更新）
+        添加刷新回調（用於自定義儀錶盤更新）
         
-        参数:
-            callback: 回调函数 callback(simulator)
+        參數:
+            callback: 回調函數 callback(simulator)
         """
         self.on_refresh_callbacks.append(callback)
     
     def start(self) -> None:
-        """在后台线程启动模拟器"""
+        """在後臺線程啟動模擬器"""
         if self._running:
             return
         
@@ -146,52 +118,52 @@ class LiveSimulator:
             name='live_simulator'
         )
         self._thread.start()
-        logger.info("在线模拟器已启动")
+        logger.info("在線模擬器已啟動")
     
     def stop(self) -> None:
-        """停止模拟器"""
+        """停止模擬器"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=10)
-        logger.info("在线模拟器已停止")
+        logger.info("在線模擬器已停止")
     
     def _run_loop(self) -> None:
-        """主运行循环"""
-        # 初始化：拉取纳指基准数据
+        """主運行循環"""
+        # 初始化：拉取納指基準數據
         self._initialize_benchmark()
         
         while self._running:
             try:
                 self._tick()
             except Exception as e:
-                logger.error(f"模拟器异常: {e}", exc_info=True)
+                logger.error(f"模擬器異常: {e}", exc_info=True)
             
             # 等待下一次刷新
             time.sleep(self.refresh_interval)
     
     def _tick(self) -> None:
-        """单次tick（每分钟执行一次）"""
+        """單次tick（每分鐘執行一次）"""
         self._iteration_count += 1
         now = datetime.now()
         
-        # 1. 获取市场状态
+        # 1. 獲取市場狀態
         status, desc = self.clock.get_status()
         
-        # 2. 拉取实时行情
+        # 2. 拉取實時行情
         prices = self._fetch_realtime_prices()
         
         if not prices:
-            logger.debug("无法获取行情数据，跳过本轮")
+            logger.debug("無法獲取行情數據，跳過本輪")
             return
         
-        # 记录前一价格
+        # 記錄前一價格
         self._previous_prices = dict(self._current_prices)
         self._current_prices = prices
         
-        # 3. 更新持仓市值
+        # 3. 更新持倉市值
         self.portfolio.update_prices(prices)
         
-        # 4. 更新基准
+        # 4. 更新基準
         nasdaq_price = prices.get('^IXIC', 0)
         if nasdaq_price > 0:
             self.benchmark.update(
@@ -200,33 +172,33 @@ class LiveSimulator:
                 now.isoformat()
             )
         
-        # 5. 交易时段：生成信号并执行
+        # 5. 交易時段：生成信號並執行
         if status == MarketStatus.REGULAR_HOURS:
             self._execute_trading_cycle(prices)
         
-        # 6. 调用刷新回调（更新面板）
+        # 6. 調用刷新回調（更新面板）
         for callback in self.on_refresh_callbacks:
             try:
                 callback(self)
             except Exception as e:
-                logger.error(f"刷新回调异常: {e}")
+                logger.error(f"刷新回調異常: {e}")
         
         self._last_refresh_time = time.time()
     
     def _initialize_benchmark(self) -> None:
-        """初始化纳指基准"""
+        """初始化納指基準"""
         try:
             success = self.benchmark.fetch_nasdaq_history(period='6mo')
             if success:
-                logger.info("纳指基准数据已加载")
+                logger.info("納指基準數據已加載")
         except Exception as e:
-            logger.warning(f"纳指基准初始化失败: {e}")
+            logger.warning(f"納指基準初始化失敗: {e}")
     
     def _fetch_realtime_prices(self) -> Dict[str, float]:
         """
-        拉取实时行情
+        拉取實時行情
         
-        从Yahoo Finance获取股票的实时报价。
+        從Yahoo Finance獲取股票的實時報價。
         使用yfinance的Ticker.info或history(period='1d')。
         
         返回:
@@ -237,46 +209,46 @@ class LiveSimulator:
             
             prices = {}
             
-            # 批量获取（所有ticker + 纳指）
+            # 批量獲取（所有ticker + 納指）
             all_tickers = self.tickers + ['^IXIC']
             
             for ticker in all_tickers:
                 try:
                     stock = yf.Ticker(ticker)
                     
-                    # 优先使用 fast_info 获取最新价格
+                    # 優先使用 fast_info 獲取最新價格
                     info = stock.fast_info
                     price = info.get('lastPrice') or info.get('regularMarketPrice')
                     
                     if price and price > 0:
                         prices[ticker] = float(price)
                     else:
-                        # 降级到 history
+                        # 降級到 history
                         hist = stock.history(period='1d')
                         if not hist.empty:
                             prices[ticker] = float(hist['Close'].iloc[-1])
                             
                 except Exception as e:
-                    logger.debug(f"获取 {ticker} 价格失败: {e}")
-                    # 使用上次价格（如果有）
+                    logger.debug(f"獲取 {ticker} 價格失敗: {e}")
+                    # 使用上次價格（如果有）
                     if ticker in self._current_prices:
                         prices[ticker] = self._current_prices[ticker]
             
             return prices
             
         except ImportError:
-            logger.error("yfinance未安装，使用模拟数据")
+            logger.error("yfinance未安裝，使用模擬數據")
             return self._get_mock_prices()
         except Exception as e:
-            logger.error(f"行情拉取失败: {e}")
+            logger.error(f"行情拉取失敗: {e}")
             return self._get_mock_prices()
     
     def _get_mock_prices(self) -> Dict[str, float]:
         """
-        生成模拟价格（仅用于测试）
+        生成模擬價格（僅用於測試）
         
-        当yfinance不可用时，返回上次已知价格不做修改。
-        不伪造随机价格波动，确保数据可信度。
+        當yfinance不可用時，返回上次已知價格不做修改。
+        不偽造隨機價格波動，確保數據可信度。
         """
         mock = {}
         for ticker in self.tickers + ['^IXIC']:
@@ -287,14 +259,14 @@ class LiveSimulator:
     
     def _execute_trading_cycle(self, prices: Dict[str, float]) -> None:
         """
-        执行一个交易周期
+        執行一個交易周期
         
-        步骤：
-        1. 检查每日交易限制
-        2. 生成ML预测信号
-        3. 风控检查
-        4. 执行订单
-        5. 记录预测
+        步驟：
+        1. 檢查每日交易限制
+        2. 生成ML預測信號
+        3. 風控檢查
+        4. 執行訂單
+        5. 記錄預測
         """
         # 每日交易重置
         today = datetime.now().date()
@@ -303,16 +275,16 @@ class LiveSimulator:
             self._daily_trade_date = today
         
         if self._daily_trades >= self.trading_config.max_daily_trades:
-            return  # 达到每日上限
+            return  # 達到每日上限
         
-        # 对每只追踪股票生成信号
+        # 對每隻追蹤股票生成信號
         for ticker in self.tickers:
             if ticker not in prices:
                 continue
             
             price = prices[ticker]
             
-            # 生成ML预测
+            # 生成ML預測
             prediction = self._generate_prediction(ticker)
             
             if prediction is None:
@@ -322,71 +294,71 @@ class LiveSimulator:
             predicted_direction = 1 if predicted_return > 0 else 0
             confidence = prediction.get('confidence', 0.5)
             
-            # 记录预测
+            # 記錄預測
             pred_id = self.accuracy_tracker.record_prediction(
                 ticker, predicted_return, predicted_direction, confidence
             )
             
-            # 如果置信度太低，跳过交易
+            # 如果置信度太低，跳過交易
             if confidence < 0.6:
                 continue
             
-            # 生成交易信号
+            # 生成交易信號
             if predicted_direction == 1 and ticker not in self.portfolio.positions:
-                # 买入信号
+                # 買入信號
                 qty = self._calculate_position_size(ticker, price, predicted_return)
                 if qty > 0:
                     self.portfolio.execute_buy(
                         ticker, qty, price,
                         commission=self.trading_config.commission_min,
-                        reason=f'ML预测涨 {predicted_return:+.2%}'
+                        reason=f'ML預測漲 {predicted_return:+.2%}'
                     )
                     self._daily_trades += 1
                     
             elif predicted_direction == 0 and ticker in self.portfolio.positions:
                 pos = self.portfolio.positions[ticker]
                 if pos.unrealized_pnl_pct < -0.05:
-                    # 止损：持有股的预测方向转跌且跌幅超5%
+                    # 止損：持有股的預測方向轉跌且跌幅超5%
                     self.portfolio.execute_sell(
                         ticker, pos.quantity, price,
                         commission=self.trading_config.commission_min,
-                        reason=f'ML预测跌+止损 {pos.unrealized_pnl_pct:.1%}'
+                        reason=f'ML預測跌+止損 {pos.unrealized_pnl_pct:.1%}'
                     )
                     self._daily_trades += 1
                 elif pos.unrealized_pnl_pct > 0.10:
-                    # 止盈：盈利超10%且预测转跌
+                    # 止盈：盈利超10%且預測轉跌
                     self.portfolio.execute_sell(
                         ticker, pos.quantity, price,
                         commission=self.trading_config.commission_min,
-                        reason=f'止盈+ML预测跌 {pos.unrealized_pnl_pct:.1%}'
+                        reason=f'止盈+ML預測跌 {pos.unrealized_pnl_pct:.1%}'
                     )
                     self._daily_trades += 1
     
     def _generate_prediction(self, ticker: str) -> Optional[Dict]:
         """
-        使用ML模型生成预测
+        使用ML模型生成預測
         
-        如果有加载的模型，使用模型预测。
-        否则使用简单的随机信号（用于演示/测试）。
+        如果有加載的模型，使用模型預測。
+        否則使用簡單的隨機信號（用於演示/測試）。
         
-        参数:
-            ticker: 股票代码
+        參數:
+            ticker: 股票代碼
         
         返回:
-            {'return': 预测收益率, 'direction': 涨跌方向, 'confidence': 置信度}
+            {'return': 預測收益率, 'direction': 漲跌方向, 'confidence': 置信度}
         """
         if self.model is not None and self.scaler is not None:
-            # TODO: 使用真实模型预测
-            # 需要构建输入特征序列，使用模型推理
+            # TODO: 使用真實模型預測
+            # 需要構建輸入特徵序列，使用模型推理
             try:
-                # 模型推理的占位代码
+                # 模型推理的佔位代碼
                 # features = self._build_features(ticker)
                 # prediction = self.model.predict(features)
                 pass
             except Exception as e:
-                logger.debug(f"模型预测失败: {e}")
+                logger.debug(f"模型預測失敗: {e}")
         
-        # 降级方案：基于简单规则的信号
+        # 降級方案：基於簡單規則的信號
         price = self._current_prices.get(ticker, 0)
         prev_price = self._previous_prices.get(ticker, price)
         
@@ -395,7 +367,7 @@ class LiveSimulator:
         else:
             momentum = 0
         
-        # 简单动量信号（不做随机噪声污染）
+        # 簡單動量信號（不做隨機噪聲汙染）
         signal = momentum
         predicted_return = signal
         confidence = min(0.9, max(0.5, abs(signal) / 0.02 * 0.3 + 0.5))
@@ -409,29 +381,29 @@ class LiveSimulator:
     def _calculate_position_size(self, ticker: str, price: float,
                                   predicted_return: float) -> int:
         """
-        计算仓位大小
+        計算倉位大小
         
-        基于Kelly准则的简化版本：
+        基於Kelly準則的簡化版本：
         position_size = equity * max_position_pct * min(confidence, 0.5)
         
-        参数:
-            ticker: 股票代码
-            price: 当前价格
-            predicted_return: 预测收益率
+        參數:
+            ticker: 股票代碼
+            price: 當前價格
+            predicted_return: 預測收益率
         
         返回:
-            股数
+            股數
         """
         equity = self.portfolio.get_total_equity()
         max_position = equity * self.trading_config.max_position_pct
         
-        # 预测收益率越高，仓位越大（但有上限）
-        confidence_factor = min(abs(predicted_return) / 0.02, 1.0)  # 2%收益率=满仓
+        # 預測收益率越高，倉位越大（但有上限）
+        confidence_factor = min(abs(predicted_return) / 0.02, 1.0)  # 2%收益率=滿倉
         target_value = max_position * confidence_factor
         
         qty = int(target_value / price)
         
-        # 至少买1股，最多不超过现金的10%
+        # 至少買1股，最多不超過現金的10%
         max_qty = int(self.portfolio.cash * 0.1 / price)
         qty = max(1, min(qty, max_qty))
         
@@ -439,15 +411,15 @@ class LiveSimulator:
     
     def get_full_snapshot(self) -> Dict:
         """
-        获取完整系统快照（供仪表盘使用）
+        獲取完整系統快照（供儀錶盤使用）
         
         返回:
             {
-                'market': 市场状态信息,
-                'portfolio': 持仓快照,
-                'benchmark': 基准对比快照,
-                'accuracy': 准确率快照,
-                'runtime': 运行时信息
+                'market': 市場狀態信息,
+                'portfolio': 持倉快照,
+                'benchmark': 基準對比快照,
+                'accuracy': 準確率快照,
+                'runtime': 運行時信息
             }
         """
         market_info = self.clock.get_trading_session_info()
@@ -471,5 +443,5 @@ class LiveSimulator:
         }
     
     def is_running(self) -> bool:
-        """检查引擎是否运行中"""
+        """檢查引擎是否運行中"""
         return self._running

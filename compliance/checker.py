@@ -1,19 +1,4 @@
-"""
-美股量化交易系统 - 合规与报告模块
-
-确保交易行为符合SEC/FINRA监管要求：
-- 做空检查：查询借券库存、记录locate、防止裸卖空
-- 洗售规则(Wash Sale)：自动检测并标记，调整成本基础
-- PDT标记：自动判断并限制交易权限
-- 大额持仓报告：13F/13H数据辅助导出
-- 审计日志：完整记录每笔交易供合规审查
-
-设计原则：
-- 所有合规检查在下单前自动执行
-- 不可绕过的硬检查（做空locate、PDT）
-- 可配置的软检查（洗售标记、持仓预警）
-- 完整的审计追踪链
-"""
+"""Compliance rule checker."""
 
 import logging
 from typing import Optional, List, Dict, Set, Tuple, Any
@@ -35,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# 数据结构
+# 數據結構
 # ============================================================================
 @dataclass
 class Trade:
-    """单笔交易记录"""
+    """單筆交易記錄"""
     trade_id: str
     ticker: str
     side: str           # BUY/SELL/SELL_SHORT
@@ -57,35 +42,35 @@ class Trade:
 
 @dataclass
 class WashSaleMatch:
-    """洗售匹配记录"""
-    loss_trade: Trade      # 产生亏损的卖出交易
-    buy_trade: Trade       # 窗口内的买入交易
-    disallowed_loss: float # 不可抵扣的亏损金额
-    matched_shares: int    # 匹配的股数
+    """洗售匹配記錄"""
+    loss_trade: Trade      # 產生虧損的賣出交易
+    buy_trade: Trade       # 窗口內的買入交易
+    disallowed_loss: float # 不可抵扣的虧損金額
+    matched_shares: int    # 匹配的股數
     window_start: date
     window_end: date
 
 
 # ============================================================================
-# 洗售规则追踪器
+# 洗售規則追蹤器
 # ============================================================================
 class WashSaleTracker:
     """
-    洗售规则 (Wash Sale Rule) 跟踪器
+    洗售規則 (Wash Sale Rule) 跟蹤器
     
-    IRS规定：如果在卖出亏损股票的前后30天内（共61天窗口）
-    买入相同或实质上相同的证券，该亏损不可抵税，
-    需调整新买入股票的成本基础。
+    IRS規定：如果在賣出虧損股票的前後30天內（共61天窗口）
+    買入相同或實質上相同的證券，該虧損不可抵稅，
+    需調整新買入股票的成本基礎。
     
-    本追踪器：
-    1. 记录每笔交易
-    2. 卖出产生亏损时，检查前后30天窗口内的买入
-    3. 标记匹配的洗售对
-    4. 计算调整后的成本基础
-    5. 生成洗售报告
+    本追蹤器：
+    1. 記錄每筆交易
+    2. 賣出產生虧損時，檢查前後30天窗口內的買入
+    3. 標記匹配的洗售對
+    4. 計算調整後的成本基礎
+    5. 生成洗售報告
     
-    时间复杂度: O(n^2) 检查所有交易对（实际交易量下可接受）
-    空间复杂度: O(n)
+    時間複雜度: O(n^2) 檢查所有交易對（實際交易量下可接受）
+    空間複雜度: O(n)
     """
     
     def __init__(self):
@@ -95,31 +80,31 @@ class WashSaleTracker:
     
     def record_trade(self, trade: Trade) -> None:
         """
-        记录一笔交易并自动检查洗售规则
+        記錄一筆交易並自動檢查洗售規則
         
-        参数:
-            trade: 交易记录
+        參數:
+            trade: 交易記錄
         """
         self.trades[trade.ticker].append(trade)
         
-        # 只在卖出且亏损时检查
+        # 只在賣出且虧損時檢查
         if trade.side == 'SELL' and self._is_loss(trade):
             self._check_wash_sale(trade)
     
     def _is_loss(self, sell_trade: Trade) -> bool:
         """
-        判断卖出交易是否产生亏损
+        判斷賣出交易是否產生虧損
         
-        通过比较卖出价和平均买入成本判断。
-        （简化实现，实际应考虑FIFO/LIFO/特定标识法）
+        通過比較賣出價和平均買入成本判斷。
+        （簡化實現，實際應考慮FIFO/LIFO/特定標識法）
         
-        参数:
-            sell_trade: 卖出交易
+        參數:
+            sell_trade: 賣出交易
         
         返回:
-            是否亏损
+            是否虧損
         """
-        # 计算该股票当前持仓的平均成本
+        # 計算該股票當前持倉的平均成本
         ticker_trades = self.trades[sell_trade.ticker]
         total_cost = 0.0
         total_shares = 0
@@ -140,12 +125,12 @@ class WashSaleTracker:
     
     def _check_wash_sale(self, sell_trade: Trade) -> None:
         """
-        检查卖出交易是否触发洗售规则
+        檢查賣出交易是否觸發洗售規則
         
-        在卖出日前后30天内查找相同股票的买入交易。
+        在賣出日前後30天內查找相同股票的買入交易。
         
-        参数:
-            sell_trade: 亏损的卖出交易
+        參數:
+            sell_trade: 虧損的賣出交易
         """
         ticker = sell_trade.ticker
         sell_date = sell_trade.trade_date
@@ -153,14 +138,14 @@ class WashSaleTracker:
         window_start = sell_date - timedelta(days=WashSaleRule.WINDOW_DAYS)
         window_end = sell_date + timedelta(days=WashSaleRule.WINDOW_DAYS)
         
-        # 查找窗口内的买入交易
+        # 查找窗口內的買入交易
         for trade in self.trades[ticker]:
             if (trade.side == 'BUY' and 
                 window_start <= trade.trade_date <= window_end and
                 trade.trade_id != sell_trade.trade_id):
                 
-                # 计算不可抵扣的亏损
-                # 按比例匹配：如果买入100股但只卖出50股被匹配
+                # 計算不可抵扣的虧損
+                # 按比例匹配：如果買入100股但只賣出50股被匹配
                 matched_shares = min(sell_trade.quantity, trade.quantity)
                 loss_per_share = self._calculate_loss_per_share(sell_trade)
                 disallowed_loss = matched_shares * loss_per_share
@@ -176,20 +161,20 @@ class WashSaleTracker:
                 
                 self.wash_sales.append(match)
                 
-                # 调整新买入股票的成本基础
-                # 新的成本基础 = 原买入价 + 不可抵扣的亏损/股
+                # 調整新買入股票的成本基礎
+                # 新的成本基礎 = 原買入價 + 不可抵扣的虧損/股
                 adjusted_cost = trade.price + disallowed_loss / matched_shares
                 self.adjusted_cost_basis[trade.trade_id] = adjusted_cost
                 
                 logger.warning(
-                    f"⚠️ 洗售检测: {ticker} 卖出亏损${loss_per_share:.2f}/股, "
-                    f"窗口内买入{trade.quantity}股 @ ${trade.price:.2f}, "
-                    f"不可抵扣亏损: ${disallowed_loss:.2f}, "
-                    f"调整后成本: ${adjusted_cost:.2f}"
+                    f"⚠️ 洗售檢測: {ticker} 賣出虧損${loss_per_share:.2f}/股, "
+                    f"窗口內買入{trade.quantity}股 @ ${trade.price:.2f}, "
+                    f"不可抵扣虧損: ${disallowed_loss:.2f}, "
+                    f"調整後成本: ${adjusted_cost:.2f}"
                 )
     
     def _calculate_loss_per_share(self, sell_trade: Trade) -> float:
-        """计算每股亏损金额"""
+        """計算每股虧損金額"""
         ticker_trades = self.trades[sell_trade.ticker]
         total_cost = 0.0
         total_shares = 0
@@ -207,7 +192,7 @@ class WashSaleTracker:
     
     def generate_wash_sale_report(self) -> pd.DataFrame:
         """
-        生成洗售报告
+        生成洗售報告
         
         返回:
             包含所有洗售匹配的DataFrame
@@ -230,38 +215,38 @@ class WashSaleTracker:
 
 
 # ============================================================================
-# 做空检查器
+# 做空檢查器
 # ============================================================================
 class ShortSellChecker:
     """
-    做空合规检查器
+    做空合規檢查器
     
-    在做空订单执行前自动检查：
+    在做空訂單執行前自動檢查：
     1. 借券可用性 (Locate Requirement)
     2. Uptick Rule (Reg SHO Rule 201)
-    3. 裸卖空防范
+    3. 裸賣空防範
     
-    参数:
+    參數:
         config: 交易配置
-        borrow_inventory: 借券库存 {ticker: available_shares}
+        borrow_inventory: 借券庫存 {ticker: available_shares}
     """
     
     def __init__(self, config: TradingConfig):
         self.config = config
-        self.borrow_inventory: Dict[str, int] = {}  # 可用借券数量
-        self.borrow_rates: Dict[str, float] = {}    # 年化借券费率
-        self.locate_records: Dict[str, Dict] = {}   # locate记录
+        self.borrow_inventory: Dict[str, int] = {}  # 可用借券數量
+        self.borrow_rates: Dict[str, float] = {}    # 年化借券費率
+        self.locate_records: Dict[str, Dict] = {}   # locate記錄
         self.locate_id_counter: int = 0
     
     def update_borrow_inventory(self, ticker: str, available: int,
                                 rate: float = 0.003) -> None:
         """
-        更新借券库存
+        更新借券庫存
         
-        参数:
-            ticker: 股票代码
-            available: 可借股数
-            rate: 年化借券费率
+        參數:
+            ticker: 股票代碼
+            available: 可借股數
+            rate: 年化借券費率
         """
         self.borrow_inventory[ticker.upper()] = available
         self.borrow_rates[ticker.upper()] = rate
@@ -269,11 +254,11 @@ class ShortSellChecker:
     def check_short_availability(self, ticker: str, 
                                   quantity: int) -> Tuple[bool, str]:
         """
-        检查做空借券可用性
+        檢查做空借券可用性
         
-        参数:
-            ticker: 股票代码
-            quantity: 做空数量
+        參數:
+            ticker: 股票代碼
+            quantity: 做空數量
         
         返回:
             (是否可用, 原因描述)
@@ -288,19 +273,19 @@ class ShortSellChecker:
     
     def request_locate(self, ticker: str, quantity: int) -> str:
         """
-        请求做空借券定位 (Locate Request)
+        請求做空借券定位 (Locate Request)
         
-        Reg SHO Rule 203(b)(1): 做空前必须确认可以借到股票。
+        Reg SHO Rule 203(b)(1): 做空前必須確認可以借到股票。
         
-        参数:
-            ticker: 股票代码
-            quantity: 做空数量
+        參數:
+            ticker: 股票代碼
+            quantity: 做空數量
         
         返回:
             locate ID
         
-        抛出:
-            ShortSellLocateError: 无法定位借券
+        拋出:
+            ShortSellLocateError: 無法定位借券
         """
         ticker = ticker.upper()
         available, reason = self.check_short_availability(ticker, quantity)
@@ -330,9 +315,9 @@ class ShortSellChecker:
     
     def consume_locate(self, locate_id: str) -> None:
         """
-        使用locate（在订单成交后）
+        使用locate（在訂單成交後）
         
-        参数:
+        參數:
             locate_id: Locate ID
         """
         if locate_id in self.locate_records:
@@ -341,45 +326,45 @@ class ShortSellChecker:
     def check_uptick_rule(self, ticker: str, current_price: float,
                           previous_close: float) -> Tuple[bool, str]:
         """
-        检查Uptick Rule (Reg SHO Rule 201)
+        檢查Uptick Rule (Reg SHO Rule 201)
         
-        当股票日内跌超前收盘价10%时，触发断路器，
-        剩余交易日+下一交易日做空只能在uptick时执行。
+        當股票日內跌超前收盤價10%時，觸發斷路器，
+        剩餘交易日+下一交易日做空只能在uptick時執行。
         
-        参数:
-            ticker: 股票代码
-            current_price: 当前价格
-            previous_close: 前收盘价
+        參數:
+            ticker: 股票代碼
+            current_price: 當前價格
+            previous_close: 前收盤價
         
         返回:
-            (是否触发, 描述)
+            (是否觸發, 描述)
         """
         decline_pct = (current_price - previous_close) / previous_close
         
         if decline_pct <= -RegSHO.CIRCUIT_BREAKER_THRESHOLD:
             return True, (
-                f"{ticker} 触发Uptick Rule: 跌幅{decline_pct:.1%} >= "
+                f"{ticker} 觸發Uptick Rule: 跌幅{decline_pct:.1%} >= "
                 f"{RegSHO.CIRCUIT_BREAKER_THRESHOLD:.0%}, "
                 f"做空受限"
             )
         
-        return False, "未触发Uptick Rule"
+        return False, "未觸發Uptick Rule"
 
 
 # ============================================================================
-# 统一合规检查器
+# 統一合規檢查器
 # ============================================================================
 class ComplianceChecker:
     """
-    统一合规检查器
+    統一合規檢查器
     
-    在下单前自动执行所有合规检查：
-    1. PDT规则
-    2. 做空合规（locate + uptick）
-    3. 洗售标记
-    4. 持仓报告阈值
+    在下單前自動執行所有合規檢查：
+    1. PDT規則
+    2. 做空合規（locate + uptick）
+    3. 洗售標記
+    4. 持倉報告閾值
     
-    所有检查不可绕过，违规订单将被直接拒绝。
+    所有檢查不可繞過，違規訂單將被直接拒絕。
     """
     
     def __init__(self, config: TradingConfig):
@@ -387,7 +372,7 @@ class ComplianceChecker:
         self.wash_sale_tracker = WashSaleTracker()
         self.short_checker = ShortSellChecker(config)
         
-        # PDT追踪
+        # PDT追蹤
         self.day_trades: Dict[date, int] = defaultdict(int)  # {date: day_trade_count}
         self.is_pdt_marked: bool = False
     
@@ -401,43 +386,43 @@ class ComplianceChecker:
         account_equity: float
     ) -> Tuple[bool, str]:
         """
-        交易前合规检查
+        交易前合規檢查
         
-        参数:
-            ticker: 股票代码
+        參數:
+            ticker: 股票代碼
             side: BUY/SELL/SELL_SHORT
-            quantity: 数量
-            price: 价格
-            previous_close: 前收盘价
-            account_equity: 账户净值
+            quantity: 數量
+            price: 價格
+            previous_close: 前收盤價
+            account_equity: 帳戶淨值
         
         返回:
-            (是否通过, 原因)
+            (是否通過, 原因)
         """
-        # 1. PDT检查
+        # 1. PDT檢查
         if self.is_pdt_marked and account_equity < PDT_RULES.MIN_EQUITY:
             return False, (
-                f"PDT限制: 账户净值${account_equity:,.0f} < "
+                f"PDT限制: 帳戶淨值${account_equity:,.0f} < "
                 f"${PDT_RULES.MIN_EQUITY:,.0f}最低要求"
             )
         
-        # 2. 做空合规检查
+        # 2. 做空合規檢查
         if side == 'SELL_SHORT':
-            # 2a. Locate检查
+            # 2a. Locate檢查
             available, reason = self.short_checker.check_short_availability(ticker, quantity)
             if not available:
                 return False, reason
             
-            # 2b. Uptick Rule检查
+            # 2b. Uptick Rule檢查
             triggered, msg = self.short_checker.check_uptick_rule(
                 ticker, price, previous_close
             )
             if triggered:
                 return False, msg
         
-        # 3. 洗售检查（仅标记，不阻止交易）
+        # 3. 洗售檢查（僅標記，不阻止交易）
         if side == 'SELL':
-            # 检查是否在洗售窗口内买入过同一股票
+            # 檢查是否在洗售窗口內買入過同一股票
             recent_buys = [
                 t for t in self.wash_sale_tracker.trades.get(ticker.upper(), [])
                 if t.side == 'BUY' and 
@@ -445,21 +430,21 @@ class ComplianceChecker:
             ]
             if recent_buys:
                 logger.warning(
-                    f"⚠️ 潜在洗售: {ticker} 在 {WashSaleRule.WINDOW_DAYS}天内有买入记录"
+                    f"⚠️ 潛在洗售: {ticker} 在 {WashSaleRule.WINDOW_DAYS}天內有買入記錄"
                 )
         
-        return True, "合规检查通过"
+        return True, "合規檢查通過"
     
     def record_trade(self, trade: Trade) -> None:
         """
-        记录交易（用于后续合规分析）
+        記錄交易（用於後續合規分析）
         
-        参数:
-            trade: 交易记录
+        參數:
+            trade: 交易記錄
         """
         self.wash_sale_tracker.record_trade(trade)
         
-        # 追踪日间交易（同一天买卖同一股票）
+        # 追蹤日間交易（同一天買賣同一股票）
         if trade.side in ('SELL', 'SELL_SHORT'):
             ticker_buys_today = [
                 t for t in self.wash_sale_tracker.trades.get(trade.ticker, [])
@@ -468,19 +453,19 @@ class ComplianceChecker:
             if ticker_buys_today:
                 self.day_trades[trade.trade_date] += 1
         
-        # PDT检查
+        # PDT檢查
         self._check_pdt_status(datetime.now().date())
     
     def _check_pdt_status(self, check_date: date) -> None:
         """
-        检查PDT状态
+        檢查PDT狀態
         
-        如果5个交易日内有4次或以上日内交易，标记为PDT。
+        如果5個交易日內有4次或以上日內交易，標記為PDT。
         
-        参数:
-            check_date: 检查日期
+        參數:
+            check_date: 檢查日期
         """
-        # 统计最近5个交易日的日内交易次数
+        # 統計最近5個交易日的日內交易次數
         recent_count = 0
         for d in sorted(self.day_trades.keys()):
             if (check_date - d).days <= PDT_RULES.ROLLING_WINDOW:
@@ -490,16 +475,16 @@ class ComplianceChecker:
             if not self.is_pdt_marked:
                 self.is_pdt_marked = True
                 logger.warning(
-                    f"⚠️ 账户已被标记为PDT: "
-                    f"{PDT_RULES.ROLLING_WINDOW}个交易日内{recent_count}次日内交易"
+                    f"⚠️ 帳戶已被標記為PDT: "
+                    f"{PDT_RULES.ROLLING_WINDOW}個交易日內{recent_count}次日內交易"
                 )
     
     def generate_compliance_report(self) -> Dict[str, Any]:
         """
-        生成合规报告
+        生成合規報告
         
         返回:
-            包含合规状态的字典
+            包含合規狀態的字典
         """
         return {
             'pdt_status': {

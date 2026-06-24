@@ -1,23 +1,4 @@
-"""
-美股量化交易系统 - 告警模块
-
-支持多通道分级告警推送：
-- Telegram Bot
-- Email (SMTP)
-- SMS (Twilio)
-- Console (开发调试用)
-
-告警分级：
-- INFO: 一般信息，无需立即处理
-- WARNING: 需关注，建议检查
-- CRITICAL: 需要立即处理
-- EMERGENCY: 紧急情况，可能造成严重损失
-
-设计原则：
-- 告警去重：相同告警在冷却期内不重复发送
-- 告警升级：低级别告警持续触发后自动升级
-- 告警静默：支持临时静默特定类型告警
-"""
+"""Alerting and notification."""
 
 import logging
 import smtplib
@@ -33,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class AlertLevel(Enum):
-    """告警级别"""
+    """告警級別"""
     INFO = 0
     WARNING = 1
     CRITICAL = 2
@@ -50,11 +31,11 @@ class AlertChannel(Enum):
 
 @dataclass
 class Alert:
-    """告警对象"""
+    """告警對象"""
     level: AlertLevel
     title: str
     message: str
-    source: str = ''           # 来源模块
+    source: str = ''           # 來源模塊
     timestamp: str = ''
     metadata: Dict[str, Any] = field(default_factory=dict)
     sent_channels: List[str] = field(default_factory=list)
@@ -64,29 +45,29 @@ class AlertManager:
     """
     告警管理器
     
-    集中管理所有告警的发送、去重和升级。
+    集中管理所有告警的發送、去重和升級。
     
     配置示例:
         am = AlertManager()
         am.add_channel(AlertChannel.TELEGRAM, telegram_bot_token='xxx', chat_id='yyy')
-        am.send_alert(AlertLevel.CRITICAL, '交易异常', '连续5次订单被拒绝')
+        am.send_alert(AlertLevel.CRITICAL, '交易異常', '連續5次訂單被拒絕')
     """
     
     def __init__(self, cooldown_seconds: int = 300):
         """
-        参数:
-            cooldown_seconds: 相同告警冷却时间（秒）
+        參數:
+            cooldown_seconds: 相同告警冷卻時間（秒）
         """
         self.channels: Dict[AlertChannel, Dict] = {}
         self._alert_history: List[Alert] = []
         self._sent_alerts: Dict[str, float] = {}  # {alert_key: last_sent_time}
         self.cooldown = cooldown_seconds
         
-        # 默认添加控制台通道
+        # 默認添加控制臺通道
         self.add_console_channel()
     
     def add_console_channel(self) -> None:
-        """添加控制台告警通道"""
+        """添加控制臺告警通道"""
         self.channels[AlertChannel.CONSOLE] = {
             'enabled': True,
             'min_level': AlertLevel.INFO,
@@ -97,10 +78,10 @@ class AlertManager:
         """
         添加Telegram告警通道
         
-        参数:
+        參數:
             bot_token: Telegram Bot Token
-            chat_id: 目标Chat ID
-            min_level: 该通道的最低告警级别
+            chat_id: 目標Chat ID
+            min_level: 該通道的最低告警級別
         """
         self.channels[AlertChannel.TELEGRAM] = {
             'enabled': True,
@@ -117,13 +98,13 @@ class AlertManager:
         """
         添加Email告警通道
         
-        参数:
-            smtp_host: SMTP服务器地址
-            smtp_port: SMTP端口
-            sender: 发件人邮箱
-            password: 发件人密码/授权码
+        參數:
+            smtp_host: SMTP伺服器地址
+            smtp_port: SMTP埠
+            sender: 發件人郵箱
+            password: 發件人密碼/授權碼
             recipients: 收件人列表
-            min_level: 最低告警级别
+            min_level: 最低告警級別
         """
         self.channels[AlertChannel.EMAIL] = {
             'enabled': True,
@@ -146,29 +127,29 @@ class AlertManager:
         force: bool = False
     ) -> bool:
         """
-        发送告警
+        發送告警
         
-        参数:
-            level: 告警级别
-            title: 告警标题
-            message: 告警详细信息
-            source: 来源模块
-            metadata: 附加元数据
-            force: 是否无视冷却期强制发送
+        參數:
+            level: 告警級別
+            title: 告警標題
+            message: 告警詳細信息
+            source: 來源模塊
+            metadata: 附加元數據
+            force: 是否無視冷卻期強制發送
         
         返回:
-            是否成功发送到至少一个通道
+            是否成功發送到至少一個通道
         """
-        # 检查冷却期
+        # 檢查冷卻期
         alert_key = f"{level.value}:{title}:{source}"
         now = datetime.now()
         
         if not force and alert_key in self._sent_alerts:
             if (now - datetime.fromtimestamp(self._sent_alerts[alert_key])).seconds < self.cooldown:
-                logger.debug(f"告警冷却中: {title}")
+                logger.debug(f"告警冷卻中: {title}")
                 return False
         
-        # 创建告警对象
+        # 創建告警對象
         alert = Alert(
             level=level,
             title=title,
@@ -180,14 +161,14 @@ class AlertManager:
         
         sent_any = False
         
-        # 发送到各通道
+        # 發送到各通道
         for channel, config in self.channels.items():
             if not config.get('enabled', False):
                 continue
             
             min_level = config.get('min_level', AlertLevel.WARNING)
             if level.value < min_level.value:
-                continue  # 低于通道最低级别要求
+                continue  # 低於通道最低級別要求
             
             try:
                 if channel == AlertChannel.CONSOLE:
@@ -201,7 +182,7 @@ class AlertManager:
                 sent_any = True
                 
             except Exception as e:
-                logger.error(f"告警通道 {channel.value} 发送失败: {e}")
+                logger.error(f"告警通道 {channel.value} 發送失敗: {e}")
         
         self._alert_history.append(alert)
         self._sent_alerts[alert_key] = now.timestamp()
@@ -209,7 +190,7 @@ class AlertManager:
         return sent_any
     
     def _send_console(self, alert: Alert) -> None:
-        """发送到控制台"""
+        """發送到控制臺"""
         prefixes = {
             AlertLevel.INFO: '📢',
             AlertLevel.WARNING: '⚠️',
@@ -219,12 +200,12 @@ class AlertManager:
         prefix = prefixes.get(alert.level, '')
         
         log_msg = f"\n{'='*60}\n{prefix} [{alert.level.name}] {alert.title}\n{'='*60}\n"
-        log_msg += f"时间: {alert.timestamp}\n"
-        log_msg += f"来源: {alert.source}\n"
-        log_msg += f"详情: {alert.message}\n"
+        log_msg += f"時間: {alert.timestamp}\n"
+        log_msg += f"來源: {alert.source}\n"
+        log_msg += f"詳情: {alert.message}\n"
         
         if alert.metadata:
-            log_msg += f"元数据: {json.dumps(alert.metadata, indent=2)}\n"
+            log_msg += f"元數據: {json.dumps(alert.metadata, indent=2)}\n"
         
         log_msg += f"{'='*60}\n"
         
@@ -237,7 +218,7 @@ class AlertManager:
     
     def _send_telegram(self, alert: Alert, config: Dict) -> None:
         """
-        通过Telegram Bot发送告警
+        通過Telegram Bot發送告警
         
         使用Telegram Bot API的sendMessage接口。
         """
@@ -248,7 +229,7 @@ class AlertManager:
         
         text = f"*[{alert.level.name}] {alert.title}*\n\n"
         text += f"📅 `{alert.timestamp}`\n"
-        text += f"📡 来源: `{alert.source}`\n\n"
+        text += f"📡 來源: `{alert.source}`\n\n"
         text += f"{alert.message}\n"
         
         if alert.metadata:
@@ -264,11 +245,11 @@ class AlertManager:
             }, timeout=10)
             resp.raise_for_status()
         except Exception as e:
-            logger.error(f"Telegram发送失败: {e}")
+            logger.error(f"Telegram發送失敗: {e}")
     
     def _send_email(self, alert: Alert, config: Dict) -> None:
         """
-        通过Email发送告警
+        通過Email發送告警
         """
         msg = MIMEMultipart()
         msg['From'] = config['sender']
@@ -279,8 +260,8 @@ class AlertManager:
         <html>
         <body>
         <h2>[{alert.level.name}] {alert.title}</h2>
-        <p><b>时间:</b> {alert.timestamp}</p>
-        <p><b>来源:</b> {alert.source}</p>
+        <p><b>時間:</b> {alert.timestamp}</p>
+        <p><b>來源:</b> {alert.source}</p>
         <hr/>
         <p>{alert.message}</p>
         <pre>{json.dumps(alert.metadata, indent=2, ensure_ascii=False)}</pre>
@@ -296,16 +277,16 @@ class AlertManager:
                 server.login(config['sender'], config['password'])
                 server.send_message(msg)
         except Exception as e:
-            logger.error(f"Email发送失败: {e}")
+            logger.error(f"Email發送失敗: {e}")
     
     def get_recent_alerts(self, n: int = 20) -> List[Alert]:
-        """获取最近的告警记录"""
+        """獲取最近的告警記錄"""
         return self._alert_history[-n:]
     
     def clear_history(self) -> None:
-        """清空告警历史"""
+        """清空告警歷史"""
         self._alert_history.clear()
 
 
-# 全局告警管理器实例
+# 全局告警管理器實例
 alert_manager = AlertManager()
